@@ -164,9 +164,10 @@ fun MiEntrenoNavHost(repository: FitnessRepository) {
                 arguments = listOf(navArgument("routineId") { type = NavType.LongType })
             ) { backStack ->
                 val routineId = backStack.arguments?.getLong("routineId") ?: -1L
+                val appContext = LocalContext.current.applicationContext
                 val vm: RoutineExecutionViewModel = viewModel(
                     key = "routine_execution_$routineId",
-                    factory = routineExecutionViewModelFactory(repository, routineId)
+                    factory = routineExecutionViewModelFactory(appContext, routineId)
                 )
                 RoutineExecutionScreen(
                     viewModel = vm,

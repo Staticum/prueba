@@ -1,6 +1,6 @@
 {
-  "versionCode": 5,
-  "versionName": "1.4",
+  "versionCode": 6,
+  "versionName": "1.5",
   "apkUrl": "https://raw.githubusercontent.com/Staticum/prueba/claude/android-fitness-app-nhqb2u/downloads/MiEntreno-apk.bin",
-  "notes": "Detalle de ejercicio: toca cualquier ejercicio en Biblioteca para ver técnica, músculos trabajados y equipo."
+  "notes": "Corrige el cronómetro/voz cuando se apaga la pantalla: ahora corre en un servicio en primer plano con notificación."
 }

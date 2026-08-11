@@ -36,9 +36,9 @@ fun routineEditorViewModelFactory(repository: FitnessRepository, routineId: Long
         initializer { RoutineEditorViewModel(repository, routineId) }
     }
 
-fun routineExecutionViewModelFactory(repository: FitnessRepository, routineId: Long): ViewModelProvider.Factory =
+fun routineExecutionViewModelFactory(appContext: Context, routineId: Long): ViewModelProvider.Factory =
     viewModelFactory {
-        initializer { RoutineExecutionViewModel(repository, routineId) }
+        initializer { RoutineExecutionViewModel(appContext, routineId) }
     }
 
 fun quickLogViewModelFactory(repository: FitnessRepository): ViewModelProvider.Factory =
