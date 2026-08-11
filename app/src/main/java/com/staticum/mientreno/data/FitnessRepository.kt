@@ -15,10 +15,19 @@ class FitnessRepository(
 
     suspend fun deleteExercise(exercise: Exercise) = exerciseDao.delete(exercise)
 
-    suspend fun seedExercisesIfEmpty() {
-        if (exerciseDao.count() == 0) {
-            exerciseDao.insertAll(DefaultExercises.all)
+    suspend fun syncDefaultExercises() {
+        val existingNames = exerciseDao.getAllNames().toSet()
+        val missing = DefaultExercises.all.filter { it.name !in existingNames }
+        if (missing.isNotEmpty()) {
+            exerciseDao.insertAll(missing)
         }
+    }
+
+    suspend fun seedDeskBikeRoutineIfMissing() {
+        if (routineDao.countByName(DeskBikeRoutine.NAME) > 0) return
+        val bikeExercise = exerciseDao.getByName(DeskBikeRoutine.EXERCISE_NAME) ?: return
+        val (routine, blocks) = DeskBikeRoutine.build(bikeExercise)
+        saveRoutine(routine, blocks)
     }
 
     fun observeRoutines(): Flow<List<RoutineTemplate>> = routineDao.observeAllRoutines()

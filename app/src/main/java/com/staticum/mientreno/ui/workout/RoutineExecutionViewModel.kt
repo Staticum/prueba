@@ -87,7 +87,8 @@ class RoutineExecutionViewModel(
                 "$seconds segundos$distance."
             }
         }
-        val sentence = listOf("Inicia: ${step.exerciseName}.", roundLabel, detail)
+        val spokenNote = step.notes?.replace("·", ",")?.let { "$it." } ?: ""
+        val sentence = listOf("Inicia: ${step.exerciseName}.", spokenNote, roundLabel, detail)
             .filter { it.isNotBlank() }
             .joinToString(" ")
         _speechEvents.tryEmit(sentence)

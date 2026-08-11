@@ -24,7 +24,8 @@ class MiEntrenoApplication : Application() {
             sessionDao = database.sessionDao()
         )
         applicationScope.launch {
-            repository.seedExercisesIfEmpty()
+            repository.syncDefaultExercises()
+            repository.seedDeskBikeRoutineIfMissing()
         }
     }
 }

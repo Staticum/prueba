@@ -109,6 +109,9 @@ private fun StepHeader(step: ExecutionStep) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
     }
     Text(step.exerciseName, style = MaterialTheme.typography.titleLarge)
+    step.notes?.let {
+        Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+    }
 }
 
 @Composable

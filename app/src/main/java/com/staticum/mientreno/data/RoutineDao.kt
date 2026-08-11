@@ -15,6 +15,9 @@ interface RoutineDao {
     @Query("SELECT * FROM routine_templates ORDER BY name")
     fun observeAllRoutines(): Flow<List<RoutineTemplate>>
 
+    @Query("SELECT COUNT(*) FROM routine_templates WHERE name = :name")
+    suspend fun countByName(name: String): Int
+
     @Transaction
     @Query("SELECT * FROM routine_templates WHERE id = :routineId")
     fun observeRoutineWithBlocks(routineId: Long): Flow<RoutineWithBlocks?>

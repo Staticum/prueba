@@ -125,6 +125,15 @@ object DefaultExercises {
             defaultRestSeconds = 0,
             suggestedDurationSeconds = 1200
         ),
+        Exercise(
+            name = "Bicicleta de escritorio",
+            category = ExerciseCategory.GIMNASIO,
+            measureType = MeasureType.TIME,
+            equipment = "Bicicleta estática de escritorio (niveles 1 a 9)",
+            instructions = "Ajusta el nivel de resistencia indicado y pedalea al ritmo señalado.",
+            defaultRestSeconds = 0,
+            suggestedDurationSeconds = 900
+        ),
 
         // Casa / peso corporal
         Exercise(
