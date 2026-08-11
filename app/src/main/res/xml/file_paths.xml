@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <files-path name="record_photos" path="record_photos/" />
-    <cache-path name="camera_captures" path="camera_captures/" />
-    <cache-path name="exports" path="exports/" />
-</paths>

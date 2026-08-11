@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.staticum.urodiario"
+    namespace = "com.staticum.mientreno"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.staticum.urodiario"
+        applicationId = "com.staticum.mientreno"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -72,8 +72,6 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
-
-    implementation("io.coil-kt:coil-compose:2.6.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

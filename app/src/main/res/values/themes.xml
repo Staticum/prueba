@@ -1,3 +1,3 @@
 <resources>
-    <style name="Theme.UroDiario" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MiEntreno" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>
