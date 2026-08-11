@@ -5,6 +5,7 @@ object Routes {
     const val LIBRARY = "library"
     const val HISTORY = "history"
     const val PROGRESS = "progress"
+    const val SETTINGS = "settings"
 
     const val ROUTINE_EDITOR = "routine_editor?routineId={routineId}"
     const val ROUTINE_EXECUTION = "routine_execution/{routineId}"

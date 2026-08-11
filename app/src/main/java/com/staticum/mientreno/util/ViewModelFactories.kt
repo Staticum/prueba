@@ -1,5 +1,6 @@
 package com.staticum.mientreno.util
 
+import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -11,6 +12,7 @@ import com.staticum.mientreno.ui.progress.ProgressViewModel
 import com.staticum.mientreno.ui.quicklog.QuickLogViewModel
 import com.staticum.mientreno.ui.routines.RoutineEditorViewModel
 import com.staticum.mientreno.ui.routines.RoutineListViewModel
+import com.staticum.mientreno.ui.settings.SettingsViewModel
 import com.staticum.mientreno.ui.workout.RoutineExecutionViewModel
 
 fun libraryViewModelFactory(repository: FitnessRepository): ViewModelProvider.Factory =
@@ -51,4 +53,9 @@ fun sessionDetailViewModelFactory(repository: FitnessRepository, sessionId: Long
 fun progressViewModelFactory(repository: FitnessRepository): ViewModelProvider.Factory =
     viewModelFactory {
         initializer { ProgressViewModel(repository) }
+    }
+
+fun settingsViewModelFactory(appContext: Context): ViewModelProvider.Factory =
+    viewModelFactory {
+        initializer { SettingsViewModel(appContext) }
     }

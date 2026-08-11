@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -22,6 +23,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.compose.ui.platform.LocalContext
 import com.staticum.mientreno.data.FitnessRepository
 import com.staticum.mientreno.ui.history.HistoryScreen
 import com.staticum.mientreno.ui.history.HistoryViewModel
@@ -37,6 +39,8 @@ import com.staticum.mientreno.ui.routines.RoutineEditorScreen
 import com.staticum.mientreno.ui.routines.RoutineEditorViewModel
 import com.staticum.mientreno.ui.routines.RoutineListScreen
 import com.staticum.mientreno.ui.routines.RoutineListViewModel
+import com.staticum.mientreno.ui.settings.SettingsScreen
+import com.staticum.mientreno.ui.settings.SettingsViewModel
 import com.staticum.mientreno.ui.workout.RoutineExecutionScreen
 import com.staticum.mientreno.ui.workout.RoutineExecutionViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -48,6 +52,7 @@ import com.staticum.mientreno.util.routineEditorViewModelFactory
 import com.staticum.mientreno.util.routineExecutionViewModelFactory
 import com.staticum.mientreno.util.routineListViewModelFactory
 import com.staticum.mientreno.util.sessionDetailViewModelFactory
+import com.staticum.mientreno.util.settingsViewModelFactory
 
 private data class BottomDestination(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
@@ -55,7 +60,8 @@ private val bottomDestinations = listOf(
     BottomDestination(Routes.ROUTINES, "Rutinas", Icons.Filled.FitnessCenter),
     BottomDestination(Routes.LIBRARY, "Biblioteca", Icons.Filled.List),
     BottomDestination(Routes.HISTORY, "Historial", Icons.Filled.History),
-    BottomDestination(Routes.PROGRESS, "Progreso", Icons.Filled.ShowChart)
+    BottomDestination(Routes.PROGRESS, "Progreso", Icons.Filled.ShowChart),
+    BottomDestination(Routes.SETTINGS, "Ajustes", Icons.Filled.Settings)
 )
 
 @Composable
@@ -120,6 +126,12 @@ fun MiEntrenoNavHost(repository: FitnessRepository) {
             composable(Routes.PROGRESS) {
                 val vm: ProgressViewModel = viewModel(factory = progressViewModelFactory(repository))
                 ProgressScreen(viewModel = vm)
+            }
+
+            composable(Routes.SETTINGS) {
+                val appContext = LocalContext.current.applicationContext
+                val vm: SettingsViewModel = viewModel(factory = settingsViewModelFactory(appContext))
+                SettingsScreen(viewModel = vm)
             }
 
             composable(
