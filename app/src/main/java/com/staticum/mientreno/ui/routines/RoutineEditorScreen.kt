@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,7 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.staticum.mientreno.data.ExerciseType
+import com.staticum.mientreno.data.MeasureType
 import com.staticum.mientreno.ui.components.NumberField
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,7 +47,7 @@ fun RoutineEditorScreen(
 ) {
     val state = viewModel.state
     val availableExercises by viewModel.availableExercises.collectAsState()
-    var showPicker by remember { mutableStateOf(false) }
+    var pickerForBlock by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(state.isSaved) {
         if (state.isSaved) onSaved()
@@ -85,21 +86,28 @@ fun RoutineEditorScreen(
                 )
             }
             item {
-                Text("Ejercicios", style = MaterialTheme.typography.titleMedium)
+                Text("Bloques", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Un bloque con 1 ejercicio = series normales. Con varios ejercicios = un circuito que se repite por rondas.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            itemsIndexed(state.items) { index, draftItem ->
-                DraftExerciseCard(
-                    item = draftItem,
-                    onChange = { viewModel.updateItem(index, it) },
-                    onMoveUp = { viewModel.moveExercise(index, -1) },
-                    onMoveDown = { viewModel.moveExercise(index, 1) },
-                    onRemove = { viewModel.removeExercise(index) }
+            itemsIndexed(state.blocks) { blockIndex, block ->
+                DraftBlockCard(
+                    block = block,
+                    onChangeBlock = { viewModel.updateBlock(blockIndex, it) },
+                    onRemoveBlock = { viewModel.removeBlock(blockIndex) },
+                    onAddExercise = { pickerForBlock = blockIndex },
+                    onRemoveExercise = { exIndex -> viewModel.removeExerciseFromBlock(blockIndex, exIndex) },
+                    onMoveExercise = { exIndex, delta -> viewModel.moveExerciseInBlock(blockIndex, exIndex, delta) },
+                    onChangeExercise = { exIndex, item -> viewModel.updateExerciseInBlock(blockIndex, exIndex, item) }
                 )
             }
             item {
-                OutlinedButton(onClick = { showPicker = true }, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { viewModel.addBlock() }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Add, contentDescription = null)
-                    Text("Agregar ejercicio")
+                    Text("Agregar bloque")
                 }
             }
             item {
@@ -112,25 +120,34 @@ fun RoutineEditorScreen(
         }
     }
 
-    if (showPicker) {
+    val activeBlockIndex = pickerForBlock
+    if (activeBlockIndex != null) {
         ExercisePickerDialog(
             exercises = availableExercises,
-            onDismiss = { showPicker = false },
+            onDismiss = { pickerForBlock = null },
             onPick = {
-                viewModel.addExercise(it)
-                showPicker = false
+                viewModel.addExerciseToBlock(activeBlockIndex, it)
+                pickerForBlock = null
+            },
+            onCreateNew = { name, category, measureType, equipment, instructions, restSeconds ->
+                viewModel.createExerciseAndAddToBlock(
+                    activeBlockIndex, name, category, measureType, equipment, instructions, restSeconds
+                )
+                pickerForBlock = null
             }
         )
     }
 }
 
 @Composable
-private fun DraftExerciseCard(
-    item: DraftExerciseItem,
-    onChange: (DraftExerciseItem) -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
-    onRemove: () -> Unit
+private fun DraftBlockCard(
+    block: DraftBlock,
+    onChangeBlock: (DraftBlock) -> Unit,
+    onRemoveBlock: () -> Unit,
+    onAddExercise: () -> Unit,
+    onRemoveExercise: (Int) -> Unit,
+    onMoveExercise: (Int, Int) -> Unit,
+    onChangeExercise: (Int, DraftExerciseItem) -> Unit
 ) {
     Card {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -138,72 +155,136 @@ private fun DraftExerciseCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(item.exerciseName, style = MaterialTheme.typography.titleMedium)
-                Row {
-                    IconButton(onClick = onMoveUp) {
-                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Subir")
-                    }
-                    IconButton(onClick = onMoveDown) {
-                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Bajar")
-                    }
-                    IconButton(onClick = onRemove) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Quitar")
-                    }
+                Text(
+                    if (block.isCircuit) "Circuito" else "Bloque",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                IconButton(onClick = onRemoveBlock) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Quitar bloque")
                 }
             }
-
-            if (item.type == ExerciseType.FUERZA) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumberField(
-                        label = "Series",
-                        value = item.sets,
-                        onChange = { onChange(item.copy(sets = it)) },
-                        modifier = Modifier.width(90.dp)
-                    )
-                    NumberField(
-                        label = "Reps",
-                        value = item.reps,
-                        onChange = { onChange(item.copy(reps = it)) },
-                        modifier = Modifier.width(90.dp)
-                    )
-                    NumberField(
-                        label = "Peso (kg)",
-                        value = item.weightKg,
-                        onChange = { onChange(item.copy(weightKg = it)) },
-                        modifier = Modifier.width(110.dp),
-                        allowDecimal = true
-                    )
-                }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumberField(
-                        label = "Duración (s)",
-                        value = item.durationSeconds,
-                        onChange = { onChange(item.copy(durationSeconds = it)) },
-                        modifier = Modifier.width(130.dp)
-                    )
-                    NumberField(
-                        label = "Distancia (m)",
-                        value = item.distanceMeters,
-                        onChange = { onChange(item.copy(distanceMeters = it)) },
-                        modifier = Modifier.width(130.dp)
-                    )
-                }
-            }
-
-            NumberField(
-                label = "Descanso después (s)",
-                value = item.restSeconds,
-                onChange = { onChange(item.copy(restSeconds = it)) },
-                modifier = Modifier.width(160.dp).padding(top = 8.dp)
-            )
 
             OutlinedTextField(
-                value = item.notes,
-                onValueChange = { onChange(item.copy(notes = it)) },
-                label = { Text("Nota (opcional)") },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                value = block.name,
+                onValueChange = { onChangeBlock(block.copy(name = it)) },
+                label = { Text("Nombre del bloque (opcional)") },
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                NumberField(
+                    label = "Rondas",
+                    value = block.rounds,
+                    onChange = { onChangeBlock(block.copy(rounds = it)) },
+                    modifier = Modifier.width(110.dp)
+                )
+                NumberField(
+                    label = "Descanso entre rondas (s)",
+                    value = block.restBetweenRoundsSeconds,
+                    onChange = { onChangeBlock(block.copy(restBetweenRoundsSeconds = it)) },
+                    modifier = Modifier.width(180.dp)
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+
+            block.items.forEachIndexed { exIndex, item ->
+                DraftExerciseRow(
+                    item = item,
+                    showRestField = exIndex < block.items.lastIndex,
+                    onChange = { onChangeExercise(exIndex, it) },
+                    onMoveUp = { onMoveExercise(exIndex, -1) },
+                    onMoveDown = { onMoveExercise(exIndex, 1) },
+                    onRemove = { onRemoveExercise(exIndex) }
+                )
+                if (exIndex < block.items.lastIndex) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                }
+            }
+
+            OutlinedButton(onClick = onAddExercise, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Text("Agregar ejercicio al bloque")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DraftExerciseRow(
+    item: DraftExerciseItem,
+    showRestField: Boolean,
+    onChange: (DraftExerciseItem) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(item.exerciseName, style = MaterialTheme.typography.bodyLarge)
+            Row {
+                IconButton(onClick = onMoveUp) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Subir")
+                }
+                IconButton(onClick = onMoveDown) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Bajar")
+                }
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Quitar")
+                }
+            }
+        }
+
+        if (item.measureType == MeasureType.REPS) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberField(
+                    label = "Reps",
+                    value = item.reps,
+                    onChange = { onChange(item.copy(reps = it)) },
+                    modifier = Modifier.width(90.dp)
+                )
+                NumberField(
+                    label = "Peso (kg)",
+                    value = item.weightKg,
+                    onChange = { onChange(item.copy(weightKg = it)) },
+                    modifier = Modifier.width(110.dp),
+                    allowDecimal = true
+                )
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberField(
+                    label = "Duración (s)",
+                    value = item.durationSeconds,
+                    onChange = { onChange(item.copy(durationSeconds = it)) },
+                    modifier = Modifier.width(130.dp)
+                )
+                NumberField(
+                    label = "Distancia (m, opcional)",
+                    value = item.distanceMeters,
+                    onChange = { onChange(item.copy(distanceMeters = it)) },
+                    modifier = Modifier.width(160.dp)
+                )
+            }
+        }
+
+        if (showRestField) {
+            NumberField(
+                label = "Descanso antes del siguiente (s)",
+                value = item.restAfterSeconds,
+                onChange = { onChange(item.copy(restAfterSeconds = it)) },
+                modifier = Modifier.width(200.dp).padding(top = 8.dp)
             )
         }
+
+        OutlinedTextField(
+            value = item.notes,
+            onValueChange = { onChange(item.copy(notes = it)) },
+            label = { Text("Nota (opcional)") },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        )
     }
 }

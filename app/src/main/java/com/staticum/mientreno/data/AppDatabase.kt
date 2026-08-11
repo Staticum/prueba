@@ -10,11 +10,12 @@ import androidx.room.TypeConverters
     entities = [
         Exercise::class,
         RoutineTemplate::class,
+        RoutineBlock::class,
         RoutineExercise::class,
         WorkoutSession::class,
         SessionExerciseLog::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -34,7 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "mientreno.db"
-                ).build().also { instance = it }
+                ).fallbackToDestructiveMigration().build().also { instance = it }
             }
     }
 }

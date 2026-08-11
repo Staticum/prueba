@@ -23,16 +23,17 @@ class FitnessRepository(
 
     fun observeRoutines(): Flow<List<RoutineTemplate>> = routineDao.observeAllRoutines()
 
-    fun observeRoutine(routineId: Long): Flow<RoutineWithExercises?> =
-        routineDao.observeRoutineWithExercises(routineId)
+    fun observeRoutine(routineId: Long): Flow<RoutineWithBlocks?> =
+        routineDao.observeRoutineWithBlocks(routineId)
 
-    suspend fun saveRoutine(routine: RoutineTemplate, exercises: List<RoutineExercise>): Long {
+    suspend fun saveRoutine(routine: RoutineTemplate, blocks: List<Pair<RoutineBlock, List<RoutineExercise>>>): Long {
         val routineId = routineDao.insertRoutine(routine)
         val effectiveId = if (routine.id != 0L) routine.id else routineId
-        val withRoutineId = exercises.mapIndexed { index, exercise ->
-            exercise.copy(routineId = effectiveId, orderIndex = index)
+        val withRoutineId = blocks.mapIndexed { index, (block, exercises) ->
+            block.copy(routineId = effectiveId, orderIndex = index) to
+                exercises.mapIndexed { exIndex, exercise -> exercise.copy(orderIndex = exIndex) }
         }
-        routineDao.replaceRoutineExercises(effectiveId, withRoutineId)
+        routineDao.replaceRoutineBlocks(effectiveId, withRoutineId)
         return effectiveId
     }
 

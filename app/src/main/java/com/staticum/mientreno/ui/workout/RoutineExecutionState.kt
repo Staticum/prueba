@@ -7,7 +7,7 @@ data class RoutineExecutionState(
     val steps: List<ExecutionStep> = emptyList(),
     val currentIndex: Int = 0,
     val phase: ExecutionPhase = ExecutionPhase.LOADING,
-    val remainingRestSeconds: Int = 0
+    val remainingSeconds: Int = 0
 ) {
     val currentStep: ExecutionStep?
         get() = steps.getOrNull(currentIndex)

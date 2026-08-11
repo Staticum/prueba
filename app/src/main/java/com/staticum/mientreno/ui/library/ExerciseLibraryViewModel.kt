@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.mientreno.data.Exercise
 import com.staticum.mientreno.data.ExerciseCategory
-import com.staticum.mientreno.data.ExerciseType
 import com.staticum.mientreno.data.FitnessRepository
+import com.staticum.mientreno.data.MeasureType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +44,7 @@ class ExerciseLibraryViewModel(private val repository: FitnessRepository) : View
     fun addCustomExercise(
         name: String,
         category: ExerciseCategory,
-        type: ExerciseType,
+        measureType: MeasureType,
         equipment: String?,
         instructions: String?,
         defaultRestSeconds: Int
@@ -54,7 +54,7 @@ class ExerciseLibraryViewModel(private val repository: FitnessRepository) : View
                 Exercise(
                     name = name,
                     category = category,
-                    type = type,
+                    measureType = measureType,
                     equipment = equipment?.takeIf { it.isNotBlank() },
                     instructions = instructions?.takeIf { it.isNotBlank() },
                     defaultRestSeconds = defaultRestSeconds,

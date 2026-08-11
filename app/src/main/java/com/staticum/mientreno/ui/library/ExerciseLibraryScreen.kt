@@ -69,7 +69,7 @@ fun ExerciseLibraryScreen(viewModel: ExerciseLibraryViewModel) {
                                     Column(modifier = Modifier.padding(end = 8.dp)) {
                                         Text(exercise.name, style = MaterialTheme.typography.titleMedium)
                                         Text(
-                                            "${exercise.category.label} · ${exercise.type.label}",
+                                            "${exercise.category.label} · ${exercise.measureType.label}",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

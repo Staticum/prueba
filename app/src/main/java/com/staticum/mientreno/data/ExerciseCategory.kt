@@ -8,7 +8,7 @@ enum class ExerciseCategory(val label: String) {
     OTRO("Otro")
 }
 
-enum class ExerciseType(val label: String) {
-    FUERZA("Fuerza (series y repeticiones)"),
-    CARDIO("Cardio (duración y distancia)")
+enum class MeasureType(val label: String) {
+    REPS("Repeticiones"),
+    TIME("Tiempo (cronómetro con voz)")
 }

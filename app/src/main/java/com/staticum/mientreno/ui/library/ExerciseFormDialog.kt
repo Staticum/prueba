@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.staticum.mientreno.data.ExerciseCategory
-import com.staticum.mientreno.data.ExerciseType
+import com.staticum.mientreno.data.MeasureType
 
 @Composable
 fun ExerciseFormDialog(
@@ -27,7 +27,7 @@ fun ExerciseFormDialog(
     onSave: (
         name: String,
         category: ExerciseCategory,
-        type: ExerciseType,
+        measureType: MeasureType,
         equipment: String,
         instructions: String,
         restSeconds: Int
@@ -35,7 +35,7 @@ fun ExerciseFormDialog(
 ) {
     var name by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(ExerciseCategory.CASA) }
-    var type by remember { mutableStateOf(ExerciseType.FUERZA) }
+    var measureType by remember { mutableStateOf(MeasureType.REPS) }
     var equipment by remember { mutableStateOf("") }
     var instructions by remember { mutableStateOf("") }
     var restSeconds by remember { mutableStateOf("60") }
@@ -63,12 +63,12 @@ fun ExerciseFormDialog(
                     }
                 }
 
-                Text("Tipo")
+                Text("¿Cómo se mide?")
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(ExerciseType.entries) { option ->
+                    items(MeasureType.entries) { option ->
                         FilterChip(
-                            selected = type == option,
-                            onClick = { type = option },
+                            selected = measureType == option,
+                            onClick = { measureType = option },
                             label = { Text(option.label) }
                         )
                     }
@@ -102,7 +102,7 @@ fun ExerciseFormDialog(
                         onSave(
                             name.trim(),
                             category,
-                            type,
+                            measureType,
                             equipment,
                             instructions,
                             restSeconds.toIntOrNull() ?: 60

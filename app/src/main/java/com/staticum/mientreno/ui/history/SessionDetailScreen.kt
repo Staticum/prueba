@@ -22,7 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.staticum.mientreno.data.ExerciseType
+import com.staticum.mientreno.data.MeasureType
 import com.staticum.mientreno.data.SessionExerciseLog
 import com.staticum.mientreno.ui.components.EmptyState
 import com.staticum.mientreno.util.toFormattedDateTime
@@ -72,11 +72,11 @@ private fun ExerciseLogCard(exerciseName: String, logs: List<SessionExerciseLog>
     Card {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Text(exerciseName, style = MaterialTheme.typography.titleMedium)
-            logs.sortedBy { it.setNumber }.forEach { log ->
-                val line = if (log.type == ExerciseType.FUERZA) {
+            logs.sortedBy { it.roundNumber }.forEach { log ->
+                val line = if (log.measureType == MeasureType.REPS) {
                     val reps = log.reps?.let { "$it reps" } ?: ""
                     val weight = log.weightKg?.let { " · ${it} kg" } ?: ""
-                    "Serie ${log.setNumber}: $reps$weight"
+                    "Serie ${log.roundNumber}: $reps$weight"
                 } else {
                     val duration = log.durationSeconds?.let { "${it / 60} min" } ?: ""
                     val distance = log.distanceMeters?.let { " · ${it} m" } ?: ""

@@ -29,7 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.staticum.mientreno.data.ExerciseType
+import com.staticum.mientreno.data.MeasureType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,13 +72,21 @@ fun RoutineExecutionScreen(
                 ExecutionPhase.EXERCISE -> {
                     val step = state.currentStep
                     if (step != null) {
-                        ExerciseStepContent(step = step, onComplete = viewModel::completeCurrentStep)
+                        StepHeader(step)
+                        if (step.measureType == MeasureType.TIME) {
+                            TimedExerciseContent(
+                                remainingSeconds = state.remainingSeconds,
+                                onSkip = { viewModel.skipTimedExercise() }
+                            )
+                        } else {
+                            RepsExerciseContent(step = step, onComplete = viewModel::completeCurrentStep)
+                        }
                     }
                 }
                 ExecutionPhase.RESTING -> {
                     Text("Descanso", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "${state.remainingRestSeconds}",
+                        "${state.remainingSeconds}",
                         fontSize = 64.sp,
                         style = MaterialTheme.typography.titleLarge
                     )
@@ -95,62 +103,53 @@ fun RoutineExecutionScreen(
 }
 
 @Composable
-private fun ExerciseStepContent(
+private fun StepHeader(step: ExecutionStep) {
+    if (step.totalRounds > 1) {
+        val label = if (step.isCircuit) "Ronda ${step.roundNumber} de ${step.totalRounds}" else "Serie ${step.roundNumber} de ${step.totalRounds}"
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+    }
+    Text(step.exerciseName, style = MaterialTheme.typography.titleLarge)
+}
+
+@Composable
+private fun TimedExerciseContent(remainingSeconds: Int, onSkip: () -> Unit) {
+    Text(
+        "$remainingSeconds",
+        fontSize = 64.sp,
+        style = MaterialTheme.typography.titleLarge
+    )
+    OutlinedButton(onClick = onSkip) {
+        Text("Marcar hecho antes")
+    }
+}
+
+@Composable
+private fun RepsExerciseContent(
     step: ExecutionStep,
     onComplete: (Int?, Double?, Int?, Int?) -> Unit
 ) {
-    Text(step.exerciseName, style = MaterialTheme.typography.titleLarge)
+    var reps by remember(step) { mutableStateOf(step.targetReps?.toString() ?: "") }
+    var weight by remember(step) { mutableStateOf(step.targetWeightKg?.toString() ?: "") }
 
-    if (step.type == ExerciseType.FUERZA) {
-        Text("Serie ${step.setNumber} de ${step.totalSets}", style = MaterialTheme.typography.bodyLarge)
-        var reps by remember(step) { mutableStateOf(step.targetReps?.toString() ?: "") }
-        var weight by remember(step) { mutableStateOf(step.targetWeightKg?.toString() ?: "") }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = reps,
-                onValueChange = { reps = it.filter { c -> c.isDigit() } },
-                label = { Text("Reps") },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(0.45f)
-            )
-            OutlinedTextField(
-                value = weight,
-                onValueChange = { weight = it.filter { c -> c.isDigit() || c == '.' } },
-                label = { Text("Kg") },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(0.8f)
-            )
-        }
-
-        Button(
-            onClick = { onComplete(reps.toIntOrNull(), weight.toDoubleOrNull(), null, null) },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Serie hecha") }
-    } else {
-        var duration by remember(step) { mutableStateOf(step.targetDurationSeconds?.toString() ?: "") }
-        var distance by remember(step) { mutableStateOf(step.targetDistanceMeters?.toString() ?: "") }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = duration,
-                onValueChange = { duration = it.filter { c -> c.isDigit() } },
-                label = { Text("Duración (s)") },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(0.45f)
-            )
-            OutlinedTextField(
-                value = distance,
-                onValueChange = { distance = it.filter { c -> c.isDigit() } },
-                label = { Text("Distancia (m)") },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(0.8f)
-            )
-        }
-
-        Button(
-            onClick = { onComplete(null, null, duration.toIntOrNull(), distance.toIntOrNull()) },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Ejercicio hecho") }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = reps,
+            onValueChange = { reps = it.filter { c -> c.isDigit() } },
+            label = { Text("Reps") },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(0.45f)
+        )
+        OutlinedTextField(
+            value = weight,
+            onValueChange = { weight = it.filter { c -> c.isDigit() || c == '.' } },
+            label = { Text("Kg") },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(0.8f)
+        )
     }
+
+    Button(
+        onClick = { onComplete(reps.toIntOrNull(), weight.toDoubleOrNull(), null, null) },
+        modifier = Modifier.fillMaxWidth()
+    ) { Text("Serie hecha") }
 }

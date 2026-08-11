@@ -6,8 +6,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.mientreno.data.Exercise
-import com.staticum.mientreno.data.ExerciseType
+import com.staticum.mientreno.data.ExerciseCategory
 import com.staticum.mientreno.data.FitnessRepository
+import com.staticum.mientreno.data.MeasureType
 import com.staticum.mientreno.data.SessionExerciseLog
 import com.staticum.mientreno.data.WorkoutSession
 import com.staticum.mientreno.ui.routines.DraftExerciseItem
@@ -36,6 +37,29 @@ class QuickLogViewModel(private val repository: FitnessRepository) : ViewModel()
         state = state.copy(items = state.items + DraftExerciseItem.fromExercise(exercise))
     }
 
+    fun createExerciseAndAdd(
+        name: String,
+        category: ExerciseCategory,
+        measureType: MeasureType,
+        equipment: String,
+        instructions: String,
+        restSeconds: Int
+    ) {
+        viewModelScope.launch {
+            val newExercise = Exercise(
+                name = name,
+                category = category,
+                measureType = measureType,
+                equipment = equipment.takeIf { it.isNotBlank() },
+                instructions = instructions.takeIf { it.isNotBlank() },
+                defaultRestSeconds = restSeconds,
+                isCustom = true
+            )
+            val newId = repository.saveExercise(newExercise)
+            addExercise(newExercise.copy(id = newId))
+        }
+    }
+
     fun removeItem(index: Int) {
         state = state.copy(items = state.items.filterIndexed { i, _ -> i != index })
     }
@@ -56,7 +80,7 @@ class QuickLogViewModel(private val repository: FitnessRepository) : ViewModel()
             val now = System.currentTimeMillis()
             val logs = mutableListOf<SessionExerciseLog>()
             state.items.forEachIndexed { index, item ->
-                if (item.type == ExerciseType.FUERZA) {
+                if (item.measureType == MeasureType.REPS) {
                     val setCount = item.sets.toIntOrNull()?.coerceAtLeast(1) ?: 1
                     repeat(setCount) { setIndex ->
                         logs.add(
@@ -65,9 +89,9 @@ class QuickLogViewModel(private val repository: FitnessRepository) : ViewModel()
                                 exerciseId = item.exerciseId,
                                 exerciseName = item.exerciseName,
                                 category = item.category,
-                                type = item.type,
+                                measureType = item.measureType,
                                 orderIndex = index,
-                                setNumber = setIndex + 1,
+                                roundNumber = setIndex + 1,
                                 reps = item.reps.toIntOrNull(),
                                 weightKg = item.weightKg.toDoubleOrNull(),
                                 completed = true
@@ -81,9 +105,9 @@ class QuickLogViewModel(private val repository: FitnessRepository) : ViewModel()
                             exerciseId = item.exerciseId,
                             exerciseName = item.exerciseName,
                             category = item.category,
-                            type = item.type,
+                            measureType = item.measureType,
                             orderIndex = index,
-                            setNumber = 1,
+                            roundNumber = 1,
                             durationSeconds = item.durationSeconds.toIntOrNull(),
                             distanceMeters = item.distanceMeters.toIntOrNull(),
                             completed = true

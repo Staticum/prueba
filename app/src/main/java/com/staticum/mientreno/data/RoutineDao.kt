@@ -17,7 +17,7 @@ interface RoutineDao {
 
     @Transaction
     @Query("SELECT * FROM routine_templates WHERE id = :routineId")
-    fun observeRoutineWithExercises(routineId: Long): Flow<RoutineWithExercises?>
+    fun observeRoutineWithBlocks(routineId: Long): Flow<RoutineWithBlocks?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRoutine(routine: RoutineTemplate): Long
@@ -28,15 +28,34 @@ interface RoutineDao {
     @Delete
     suspend fun deleteRoutine(routine: RoutineTemplate)
 
-    @Query("DELETE FROM routine_exercises WHERE routineId = :routineId")
-    suspend fun deleteExercisesForRoutine(routineId: Long)
+    @Query("SELECT id FROM routine_blocks WHERE routineId = :routineId")
+    suspend fun getBlockIdsForRoutine(routineId: Long): List<Long>
+
+    @Query("DELETE FROM routine_exercises WHERE blockId IN (:blockIds)")
+    suspend fun deleteExercisesForBlocks(blockIds: List<Long>)
+
+    @Query("DELETE FROM routine_blocks WHERE routineId = :routineId")
+    suspend fun deleteBlocksForRoutine(routineId: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRoutineExercises(exercises: List<RoutineExercise>)
+    suspend fun insertBlock(block: RoutineBlock): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertExercises(exercises: List<RoutineExercise>)
 
     @Transaction
-    suspend fun replaceRoutineExercises(routineId: Long, exercises: List<RoutineExercise>) {
-        deleteExercisesForRoutine(routineId)
-        insertRoutineExercises(exercises)
+    suspend fun replaceRoutineBlocks(routineId: Long, blocks: List<Pair<RoutineBlock, List<RoutineExercise>>>) {
+        val existingBlockIds = getBlockIdsForRoutine(routineId)
+        if (existingBlockIds.isNotEmpty()) {
+            deleteExercisesForBlocks(existingBlockIds)
+        }
+        deleteBlocksForRoutine(routineId)
+
+        blocks.forEach { (block, exercises) ->
+            val blockId = insertBlock(block)
+            if (exercises.isNotEmpty()) {
+                insertExercises(exercises.map { it.copy(blockId = blockId) })
+            }
+        }
     }
 }

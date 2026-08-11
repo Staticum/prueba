@@ -11,9 +11,9 @@ class Converters {
         runCatching { ExerciseCategory.valueOf(value) }.getOrDefault(ExerciseCategory.OTRO)
 
     @TypeConverter
-    fun fromType(value: ExerciseType): String = value.name
+    fun fromMeasureType(value: MeasureType): String = value.name
 
     @TypeConverter
-    fun toType(value: String): ExerciseType =
-        runCatching { ExerciseType.valueOf(value) }.getOrDefault(ExerciseType.FUERZA)
+    fun toMeasureType(value: String): MeasureType =
+        runCatching { MeasureType.valueOf(value) }.getOrDefault(MeasureType.REPS)
 }

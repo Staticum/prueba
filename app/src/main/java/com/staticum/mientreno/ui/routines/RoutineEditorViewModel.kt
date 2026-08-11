@@ -6,7 +6,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.mientreno.data.Exercise
+import com.staticum.mientreno.data.ExerciseCategory
 import com.staticum.mientreno.data.FitnessRepository
+import com.staticum.mientreno.data.MeasureType
 import com.staticum.mientreno.data.RoutineTemplate
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,15 +30,15 @@ class RoutineEditorViewModel(
         val idToLoad = routineId
         if (idToLoad != null) {
             viewModelScope.launch {
-                repository.observeRoutine(idToLoad).collect { routineWithExercises ->
-                    if (routineWithExercises != null) {
+                repository.observeRoutine(idToLoad).collect { routineWithBlocks ->
+                    if (routineWithBlocks != null) {
                         state = state.copy(
-                            id = routineWithExercises.routine.id,
-                            name = routineWithExercises.routine.name,
-                            description = routineWithExercises.routine.description ?: "",
-                            items = routineWithExercises.exercises
-                                .sortedBy { it.orderIndex }
-                                .map { DraftExerciseItem.fromRoutineExercise(it) }
+                            id = routineWithBlocks.routine.id,
+                            name = routineWithBlocks.routine.name,
+                            description = routineWithBlocks.routine.description ?: "",
+                            blocks = routineWithBlocks.blocks
+                                .sortedBy { it.block.orderIndex }
+                                .map { DraftBlock.fromBlockWithExercises(it) }
                         )
                     }
                 }
@@ -52,27 +54,69 @@ class RoutineEditorViewModel(
         state = state.copy(description = value)
     }
 
-    fun addExercise(exercise: Exercise) {
-        state = state.copy(items = state.items + DraftExerciseItem.fromExercise(exercise))
+    fun addBlock() {
+        state = state.copy(blocks = state.blocks + DraftBlock())
     }
 
-    fun removeExercise(index: Int) {
-        state = state.copy(items = state.items.filterIndexed { i, _ -> i != index })
+    fun removeBlock(blockIndex: Int) {
+        state = state.copy(blocks = state.blocks.filterIndexed { i, _ -> i != blockIndex })
     }
 
-    fun moveExercise(index: Int, delta: Int) {
-        val newIndex = index + delta
-        if (newIndex < 0 || newIndex >= state.items.size) return
-        val mutable = state.items.toMutableList()
-        val moved = mutable.removeAt(index)
+    fun updateBlock(blockIndex: Int, updated: DraftBlock) {
+        val mutable = state.blocks.toMutableList()
+        mutable[blockIndex] = updated
+        state = state.copy(blocks = mutable)
+    }
+
+    fun addExerciseToBlock(blockIndex: Int, exercise: Exercise) {
+        val block = state.blocks.getOrNull(blockIndex) ?: return
+        updateBlock(blockIndex, block.copy(items = block.items + DraftExerciseItem.fromExercise(exercise)))
+    }
+
+    fun createExerciseAndAddToBlock(
+        blockIndex: Int,
+        name: String,
+        category: ExerciseCategory,
+        measureType: MeasureType,
+        equipment: String,
+        instructions: String,
+        restSeconds: Int
+    ) {
+        viewModelScope.launch {
+            val newExercise = Exercise(
+                name = name,
+                category = category,
+                measureType = measureType,
+                equipment = equipment.takeIf { it.isNotBlank() },
+                instructions = instructions.takeIf { it.isNotBlank() },
+                defaultRestSeconds = restSeconds,
+                isCustom = true
+            )
+            val newId = repository.saveExercise(newExercise)
+            addExerciseToBlock(blockIndex, newExercise.copy(id = newId))
+        }
+    }
+
+    fun removeExerciseFromBlock(blockIndex: Int, exerciseIndex: Int) {
+        val block = state.blocks.getOrNull(blockIndex) ?: return
+        updateBlock(blockIndex, block.copy(items = block.items.filterIndexed { i, _ -> i != exerciseIndex }))
+    }
+
+    fun moveExerciseInBlock(blockIndex: Int, exerciseIndex: Int, delta: Int) {
+        val block = state.blocks.getOrNull(blockIndex) ?: return
+        val newIndex = exerciseIndex + delta
+        if (newIndex < 0 || newIndex >= block.items.size) return
+        val mutable = block.items.toMutableList()
+        val moved = mutable.removeAt(exerciseIndex)
         mutable.add(newIndex, moved)
-        state = state.copy(items = mutable)
+        updateBlock(blockIndex, block.copy(items = mutable))
     }
 
-    fun updateItem(index: Int, updated: DraftExerciseItem) {
-        val mutable = state.items.toMutableList()
-        mutable[index] = updated
-        state = state.copy(items = mutable)
+    fun updateExerciseInBlock(blockIndex: Int, exerciseIndex: Int, updated: DraftExerciseItem) {
+        val block = state.blocks.getOrNull(blockIndex) ?: return
+        val mutable = block.items.toMutableList()
+        mutable[exerciseIndex] = updated
+        updateBlock(blockIndex, block.copy(items = mutable))
     }
 
     fun save() {
@@ -83,10 +127,8 @@ class RoutineEditorViewModel(
                 name = state.name.trim(),
                 description = state.description.trim().takeIf { it.isNotBlank() }
             )
-            val routineExercises = state.items.mapIndexed { index, item ->
-                item.toRoutineExercise(routineId = state.id, orderIndex = index)
-            }
-            val savedId = repository.saveRoutine(routine, routineExercises)
+            val blocks = state.blocks.mapIndexed { index, block -> block.toBlockWithExercises(index) }
+            val savedId = repository.saveRoutine(routine, blocks)
             state = state.copy(id = savedId, isSaved = true)
         }
     }

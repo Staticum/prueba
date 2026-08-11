@@ -32,7 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.staticum.mientreno.data.ExerciseType
+import com.staticum.mientreno.data.MeasureType
 import com.staticum.mientreno.ui.components.NumberField
 import com.staticum.mientreno.ui.routines.DraftExerciseItem
 import com.staticum.mientreno.ui.routines.ExercisePickerDialog
@@ -106,6 +106,10 @@ fun QuickLogScreen(
             onPick = {
                 viewModel.addExercise(it)
                 showPicker = false
+            },
+            onCreateNew = { name, category, measureType, equipment, instructions, restSeconds ->
+                viewModel.createExerciseAndAdd(name, category, measureType, equipment, instructions, restSeconds)
+                showPicker = false
             }
         )
     }
@@ -129,7 +133,7 @@ private fun QuickLogItemCard(
                 }
             }
 
-            if (item.type == ExerciseType.FUERZA) {
+            if (item.measureType == MeasureType.REPS) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField(
                         label = "Series",
