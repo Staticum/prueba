@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.staticum.mientreno.data.FitnessRepository
 import com.staticum.mientreno.ui.history.HistoryViewModel
 import com.staticum.mientreno.ui.history.SessionDetailViewModel
+import com.staticum.mientreno.ui.library.ExerciseDetailViewModel
 import com.staticum.mientreno.ui.library.ExerciseLibraryViewModel
 import com.staticum.mientreno.ui.progress.ProgressViewModel
 import com.staticum.mientreno.ui.quicklog.QuickLogViewModel
@@ -18,6 +19,11 @@ import com.staticum.mientreno.ui.workout.RoutineExecutionViewModel
 fun libraryViewModelFactory(repository: FitnessRepository): ViewModelProvider.Factory =
     viewModelFactory {
         initializer { ExerciseLibraryViewModel(repository) }
+    }
+
+fun exerciseDetailViewModelFactory(repository: FitnessRepository, exerciseId: Long): ViewModelProvider.Factory =
+    viewModelFactory {
+        initializer { ExerciseDetailViewModel(repository, exerciseId) }
     }
 
 fun routineListViewModelFactory(repository: FitnessRepository): ViewModelProvider.Factory =

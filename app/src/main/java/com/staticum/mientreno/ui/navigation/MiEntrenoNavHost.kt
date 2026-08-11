@@ -29,6 +29,8 @@ import com.staticum.mientreno.ui.history.HistoryScreen
 import com.staticum.mientreno.ui.history.HistoryViewModel
 import com.staticum.mientreno.ui.history.SessionDetailScreen
 import com.staticum.mientreno.ui.history.SessionDetailViewModel
+import com.staticum.mientreno.ui.library.ExerciseDetailScreen
+import com.staticum.mientreno.ui.library.ExerciseDetailViewModel
 import com.staticum.mientreno.ui.library.ExerciseLibraryScreen
 import com.staticum.mientreno.ui.library.ExerciseLibraryViewModel
 import com.staticum.mientreno.ui.progress.ProgressScreen
@@ -44,6 +46,7 @@ import com.staticum.mientreno.ui.settings.SettingsViewModel
 import com.staticum.mientreno.ui.workout.RoutineExecutionScreen
 import com.staticum.mientreno.ui.workout.RoutineExecutionViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.staticum.mientreno.util.exerciseDetailViewModelFactory
 import com.staticum.mientreno.util.historyViewModelFactory
 import com.staticum.mientreno.util.libraryViewModelFactory
 import com.staticum.mientreno.util.progressViewModelFactory
@@ -111,7 +114,10 @@ fun MiEntrenoNavHost(repository: FitnessRepository) {
 
             composable(Routes.LIBRARY) {
                 val vm: ExerciseLibraryViewModel = viewModel(factory = libraryViewModelFactory(repository))
-                ExerciseLibraryScreen(viewModel = vm)
+                ExerciseLibraryScreen(
+                    viewModel = vm,
+                    onOpenDetail = { id -> navController.navigate(Routes.exerciseDetail(id)) }
+                )
             }
 
             composable(Routes.HISTORY) {
@@ -187,6 +193,18 @@ fun MiEntrenoNavHost(repository: FitnessRepository) {
                     factory = sessionDetailViewModelFactory(repository, sessionId)
                 )
                 SessionDetailScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            }
+
+            composable(
+                route = Routes.EXERCISE_DETAIL,
+                arguments = listOf(navArgument("exerciseId") { type = NavType.LongType })
+            ) { backStack ->
+                val exerciseId = backStack.arguments?.getLong("exerciseId") ?: -1L
+                val vm: ExerciseDetailViewModel = viewModel(
+                    key = "exercise_detail_$exerciseId",
+                    factory = exerciseDetailViewModelFactory(repository, exerciseId)
+                )
+                ExerciseDetailScreen(viewModel = vm, onBack = { navController.popBackStack() })
             }
         }
     }

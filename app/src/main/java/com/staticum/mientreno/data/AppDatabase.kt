@@ -5,6 +5,15 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE exercises ADD COLUMN muscleGroups TEXT")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN technique TEXT")
+    }
+}
 
 @Database(
     entities = [
@@ -15,7 +24,7 @@ import androidx.room.TypeConverters
         WorkoutSession::class,
         SessionExerciseLog::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -35,7 +44,10 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "mientreno.db"
-                ).fallbackToDestructiveMigration().build().also { instance = it }
+                ).addMigrations(MIGRATION_2_3)
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    .also { instance = it }
             }
     }
 }

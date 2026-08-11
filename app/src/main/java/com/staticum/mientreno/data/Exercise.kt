@@ -11,6 +11,8 @@ data class Exercise(
     val measureType: MeasureType,
     val equipment: String? = null,
     val instructions: String? = null,
+    val muscleGroups: String? = null,
+    val technique: String? = null,
     val defaultRestSeconds: Int = 60,
     val suggestedReps: Int? = null,
     val suggestedWeightKg: Double? = null,

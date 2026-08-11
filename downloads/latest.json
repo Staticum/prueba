@@ -1,6 +1,6 @@
 {
-  "versionCode": 4,
-  "versionName": "1.3",
+  "versionCode": 5,
+  "versionName": "1.4",
   "apkUrl": "https://raw.githubusercontent.com/Staticum/prueba/claude/android-fitness-app-nhqb2u/downloads/MiEntreno-apk.bin",
-  "notes": "Rutina nueva: Bici escritorio con cambios de ritmo. La voz ahora anuncia el nivel de resistencia de cada tramo."
+  "notes": "Detalle de ejercicio: toca cualquier ejercicio en Biblioteca para ver técnica, músculos trabajados y equipo."
 }

@@ -31,7 +31,7 @@ import com.staticum.mientreno.ui.components.CategoryFilterRow
 import com.staticum.mientreno.ui.components.EmptyState
 
 @Composable
-fun ExerciseLibraryScreen(viewModel: ExerciseLibraryViewModel) {
+fun ExerciseLibraryScreen(viewModel: ExerciseLibraryViewModel, onOpenDetail: (Long) -> Unit) {
     val exercises by viewModel.exercises.collectAsState()
     val (query, category) = viewModel.filterState.collectAsState().value
     var showAddDialog by remember { mutableStateOf(false) }
@@ -60,7 +60,7 @@ fun ExerciseLibraryScreen(viewModel: ExerciseLibraryViewModel) {
                     modifier = Modifier.padding(top = 8.dp, bottom = 80.dp)
                 ) {
                     items(exercises, key = { it.id }) { exercise ->
-                        Card {
+                        Card(onClick = { onOpenDetail(exercise.id) }) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
