@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -25,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.staticum.mientreno.data.WorkoutSession
 import com.staticum.mientreno.ui.components.EmptyState
 import com.staticum.mientreno.util.toFormattedDateTime
@@ -75,7 +75,7 @@ private fun SessionRow(session: WorkoutSession, onClick: () -> Unit, onDelete: (
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.fillMaxWidth(0.85f)) {
                 Text(session.routineName ?: "Sesión libre", style = MaterialTheme.typography.titleMedium)
                 Text(session.startMillis.toFormattedDateTime(), style = MaterialTheme.typography.labelMedium)
                 val durationSeconds = session.endMillis?.let { ((it - session.startMillis) / 1000).toInt() }

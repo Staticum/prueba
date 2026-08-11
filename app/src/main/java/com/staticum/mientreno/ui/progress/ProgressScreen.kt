@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -28,9 +27,12 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SummaryCard("Sesiones (7 días)", "$sessionsLast7", Modifier.weight(1f))
-                SummaryCard("Minutos (7 días)", "$minutesLast7", Modifier.weight(1f))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                SummaryCard("Sesiones (7 días)", "$sessionsLast7", Modifier.fillMaxWidth(0.48f))
+                SummaryCard("Minutos (7 días)", "$minutesLast7", Modifier.fillMaxWidth(0.48f))
             }
 
             Text("Sesiones últimos 14 días", style = MaterialTheme.typography.labelMedium)
