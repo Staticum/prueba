@@ -3,6 +3,7 @@ package com.staticum.mientreno
 import android.app.Application
 import com.staticum.mientreno.data.AppDatabase
 import com.staticum.mientreno.data.FitnessRepository
+import com.staticum.mientreno.util.ThemePreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +18,7 @@ class MiEntrenoApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ThemePreferences.init(this)
         val database = AppDatabase.getInstance(this)
         repository = FitnessRepository(
             exerciseDao = database.exerciseDao(),

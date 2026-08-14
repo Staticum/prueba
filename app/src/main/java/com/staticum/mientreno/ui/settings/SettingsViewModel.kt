@@ -7,9 +7,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.mientreno.BuildConfig
+import com.staticum.mientreno.ui.theme.AppTheme
 import com.staticum.mientreno.update.ApkDownloader
 import com.staticum.mientreno.update.UpdateChecker
 import com.staticum.mientreno.update.UpdateInfo
+import com.staticum.mientreno.util.ThemePreferences
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(private val appContext: Context) : ViewModel() {
@@ -19,6 +22,12 @@ class SettingsViewModel(private val appContext: Context) : ViewModel() {
 
     val currentVersionName: String = BuildConfig.VERSION_NAME
     val currentVersionCode: Int = BuildConfig.VERSION_CODE
+
+    val selectedTheme: StateFlow<AppTheme> = ThemePreferences.selectedTheme
+
+    fun selectTheme(theme: AppTheme) {
+        ThemePreferences.setTheme(theme)
+    }
 
     fun checkForUpdate() {
         updateState = UpdateState.Checking
