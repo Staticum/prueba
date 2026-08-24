@@ -5,10 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,7 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -218,14 +215,13 @@ private fun AlphabetIndexBar(
         modifier = modifier
             .onGloballyPositioned { heightPx = it.size.height.toFloat() }
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    selectLetterAt(down.position.y)
-                    drag(down.id) { change ->
-                        change.consume()
-                        selectLetterAt(change.position.y)
-                    }
-                }
+                detectTapGestures(onTap = { offset -> selectLetterAt(offset.y) })
+            }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset -> selectLetterAt(offset.y) },
+                    onDrag = { change, _ -> change.consume(); selectLetterAt(change.position.y) },
+                )
             },
         verticalArrangement = Arrangement.SpaceEvenly,
         horizontalAlignment = Alignment.CenterHorizontally,
