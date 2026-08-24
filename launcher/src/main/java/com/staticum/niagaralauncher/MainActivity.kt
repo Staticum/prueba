@@ -2,10 +2,13 @@ package com.staticum.niagaralauncher
 
 import android.app.Activity
 import android.app.WallpaperManager
+import android.app.role.RoleManager
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +34,7 @@ import com.staticum.niagaralauncher.ui.theme.LauncherTheme
 import com.staticum.niagaralauncher.update.UpdateUiState
 import com.staticum.niagaralauncher.update.UpdateViewModel
 import com.staticum.niagaralauncher.util.ViewModelFactory
+import com.staticum.niagaralauncher.util.isDefaultLauncher
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
 
 private enum class Screen { HOME, SETTINGS }
@@ -45,6 +49,12 @@ class MainActivity : ComponentActivity() {
     private var onWallpaperPicked: ((Uri?) -> Unit)? = null
     private var onWidgetPicked: ((Int?) -> Unit)? = null
     private var pendingConfigureWidgetId: Int = -1
+
+    private val isDefaultLauncherState = mutableStateOf(false)
+
+    private val requestHomeRoleLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { isDefaultLauncherState.value = isDefaultLauncher(this) }
 
     private val pickImageLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent(),
@@ -87,6 +97,7 @@ class MainActivity : ComponentActivity() {
             val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
             val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
             val updateState by updateViewModel.state.collectAsStateWithLifecycle()
+            val isDefaultLauncher by isDefaultLauncherState
             val context = LocalContext.current
 
             LauncherTheme(palette = homeState.prefs.palette) {
@@ -95,6 +106,7 @@ class MainActivity : ComponentActivity() {
                         when (screen) {
                             Screen.HOME -> HomeScreen(
                                 state = homeState,
+                                isDefaultLauncher = isDefaultLauncher,
                                 onQueryChange = homeViewModel::onQueryChange,
                                 onLaunchApp = { app -> launchApp(app) },
                                 onLongPressApp = { app -> homeViewModel.toggleHidden(app, hidden = true) },
@@ -102,6 +114,7 @@ class MainActivity : ComponentActivity() {
                                 onSwipe = { direction ->
                                     homeState.favoriteFor(direction)?.let { launchApp(it) }
                                 },
+                                onSetAsDefaultLauncher = { requestDefaultLauncher() },
                             )
 
                             Screen.SETTINGS -> SettingsScreen(
@@ -146,6 +159,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         homeViewModel.refreshApps()
+        isDefaultLauncherState.value = isDefaultLauncher(this)
+    }
+
+    private fun requestDefaultLauncher() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(RoleManager::class.java)
+            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                requestHomeRoleLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                return
+            }
+        }
+        startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
     }
 
     private fun launchApp(app: AppInfo) {

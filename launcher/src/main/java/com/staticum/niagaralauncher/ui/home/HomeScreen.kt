@@ -1,7 +1,9 @@
 package com.staticum.niagaralauncher.ui.home
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -38,11 +41,13 @@ import kotlin.math.abs
 @Composable
 fun HomeScreen(
     state: HomeUiState,
+    isDefaultLauncher: Boolean,
     onQueryChange: (String) -> Unit,
     onLaunchApp: (AppInfo) -> Unit,
     onLongPressApp: (AppInfo) -> Unit,
     onOpenSettings: () -> Unit,
     onSwipe: (SwipeDirection) -> Unit,
+    onSetAsDefaultLauncher: () -> Unit,
 ) {
     val palette = state.prefs.palette
     val backgroundColor = if (state.prefs.useWallpaper) {
@@ -90,6 +95,18 @@ fun HomeScreen(
                 }
             }
 
+            if (!isDefaultLauncher) {
+                Text(
+                    text = "No eres el launcher predeterminado · Configurar",
+                    color = palette.accent,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onSetAsDefaultLauncher)
+                        .padding(vertical = 4.dp),
+                )
+            }
+
             SearchField(
                 query = state.query,
                 onQueryChange = onQueryChange,
@@ -105,9 +122,12 @@ fun HomeScreen(
                     AppRow(
                         app = app,
                         iconSizeFactor = state.prefs.iconSizeFactor,
+                        monochrome = state.prefs.monochromeIcons,
+                        accentColor = palette.accent,
                         textColor = palette.textPrimary,
                         onClick = { onLaunchApp(app) },
                         onLongClick = { onLongPressApp(app) },
+                        modifier = Modifier.animateItem(placementSpec = tween(220)),
                     )
                 }
             }
@@ -147,16 +167,19 @@ private fun SearchField(
 private fun AppRow(
     app: AppInfo,
     iconSizeFactor: Float,
+    monochrome: Boolean,
+    accentColor: androidx.compose.ui.graphics.Color,
     textColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val baseSizeDp = 28.dp
     val iconSize = baseSizeDp * iconSizeFactor
 
     androidx.compose.foundation.layout.Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .pointerInput(app.key) {
                 detectTapAndLongPress(onTap = onClick, onLongPress = onLongClick)
@@ -170,6 +193,7 @@ private fun AppRow(
                 height = with(density) { iconSize.toPx() }.toInt().coerceAtLeast(1),
             ).asImageBitmap(),
             contentDescription = null,
+            colorFilter = if (monochrome) ColorFilter.tint(accentColor) else null,
             modifier = Modifier.size(iconSize),
         )
         Text(

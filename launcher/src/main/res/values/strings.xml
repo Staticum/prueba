@@ -14,4 +14,6 @@
     <string name="hide_app">Ocultar</string>
     <string name="unhide_app">Mostrar</string>
     <string name="set_as_favorite">Asignar a gesto</string>
+    <string name="not_default_launcher">No eres el launcher predeterminado</string>
+    <string name="set_as_default_launcher">Configurar</string>
 </resources>
