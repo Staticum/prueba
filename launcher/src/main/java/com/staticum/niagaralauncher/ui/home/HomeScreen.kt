@@ -3,6 +3,7 @@ package com.staticum.niagaralauncher.ui.home
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -186,7 +187,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectTa
     onTap: () -> Unit,
     onLongPress: () -> Unit,
 ) {
-    androidx.compose.foundation.gestures.detectTapGestures(
+    detectTapGestures(
         onTap = { onTap() },
         onLongPress = { onLongPress() },
     )
