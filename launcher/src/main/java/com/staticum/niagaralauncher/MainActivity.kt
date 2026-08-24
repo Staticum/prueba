@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
                             Screen.HOME -> HomeScreen(
                                 state = homeState,
                                 isDefaultLauncher = isDefaultLauncher,
+                                widgetIds = settingsState.widgetIds,
                                 onQueryChange = homeViewModel::onQueryChange,
                                 onLaunchApp = { app -> launchApp(app) },
                                 onLongPressApp = { app -> homeViewModel.toggleHidden(app, hidden = true) },

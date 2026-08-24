@@ -1,6 +1,8 @@
 package com.staticum.niagaralauncher.ui.home
 
-import android.view.SoundEffectConstants
+import android.appwidget.AppWidgetManager
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -43,13 +46,14 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
+import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -59,6 +63,7 @@ import kotlin.math.abs
 fun HomeScreen(
     state: HomeUiState,
     isDefaultLauncher: Boolean,
+    widgetIds: List<Int>,
     onQueryChange: (String) -> Unit,
     onLaunchApp: (AppInfo) -> Unit,
     onLongPressApp: (AppInfo) -> Unit,
@@ -77,13 +82,15 @@ fun HomeScreen(
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val view = LocalView.current
+
+    val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 40) }
+    DisposableEffect(Unit) { onDispose { toneGenerator.release() } }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }
             .distinctUntilChanged()
             .drop(1)
-            .collect { view.playSoundEffect(SoundEffectConstants.CLICK) }
+            .collect { runCatching { toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP2, 15) } }
     }
 
     Box(
@@ -135,6 +142,10 @@ fun HomeScreen(
                 )
             }
 
+            if (widgetIds.isNotEmpty()) {
+                WidgetArea(widgetIds = widgetIds)
+            }
+
             SearchField(
                 query = state.query,
                 onQueryChange = onQueryChange,
@@ -182,6 +193,30 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(24.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WidgetArea(widgetIds: List<Int>, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val manager = remember(context) { AppWidgetManager.getInstance(context) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        widgetIds.forEach { id ->
+            val providerInfo = remember(id) { manager.getAppWidgetInfo(id) }
+            if (providerInfo != null) {
+                ComposeAppWidgetHost(
+                    appWidgetId = id,
+                    providerInfo = providerInfo,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
