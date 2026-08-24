@@ -12,8 +12,14 @@ android {
         applicationId = "com.staticum.niagaralauncher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = (project.findProperty("launcherVersionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("launcherVersionName") as String?) ?: "1.0"
+
+        buildConfigField(
+            "String",
+            "UPDATE_REPO",
+            "\"Staticum/prueba\"",
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -41,6 +47,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

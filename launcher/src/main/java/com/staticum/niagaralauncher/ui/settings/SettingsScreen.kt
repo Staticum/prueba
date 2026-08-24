@@ -31,11 +31,13 @@ import androidx.compose.ui.unit.dp
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
+import com.staticum.niagaralauncher.update.UpdateUiState
 
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
     allApps: List<AppInfo>,
+    updateState: UpdateUiState,
     onBack: () -> Unit,
     onPaletteSelected: (ColorPalette) -> Unit,
     onPickWallpaper: () -> Unit,
@@ -45,6 +47,9 @@ fun SettingsScreen(
     onToggleHidden: (AppInfo, Boolean) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
+    onCheckForUpdate: () -> Unit,
+    onDownloadUpdate: () -> Unit,
+    onInstallUpdate: () -> Unit,
 ) {
     val palette = state.prefs.palette
 
@@ -145,6 +150,19 @@ fun SettingsScreen(
                 }
             }
 
+            item { SectionTitle("Actualizaciones", palette.textSecondary) }
+            item {
+                UpdateSection(
+                    updateState = updateState,
+                    accent = palette.accent,
+                    textPrimary = palette.textPrimary,
+                    textSecondary = palette.textSecondary,
+                    onCheckForUpdate = onCheckForUpdate,
+                    onDownloadUpdate = onDownloadUpdate,
+                    onInstallUpdate = onInstallUpdate,
+                )
+            }
+
             item { SectionTitle("Apps ocultas", palette.textSecondary) }
             items(allApps, key = { it.key }) { app ->
                 val hidden = app.key in state.prefs.hiddenApps
@@ -173,6 +191,76 @@ private fun SectionTitle(text: String, color: androidx.compose.ui.graphics.Color
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
     )
+}
+
+@Composable
+private fun UpdateSection(
+    updateState: UpdateUiState,
+    accent: androidx.compose.ui.graphics.Color,
+    textPrimary: androidx.compose.ui.graphics.Color,
+    textSecondary: androidx.compose.ui.graphics.Color,
+    onCheckForUpdate: () -> Unit,
+    onDownloadUpdate: () -> Unit,
+    onInstallUpdate: () -> Unit,
+) {
+    Column {
+        when (updateState) {
+            is UpdateUiState.Idle -> {
+                Text(
+                    text = "Buscar actualización",
+                    color = accent,
+                    modifier = Modifier.clickable(onClick = onCheckForUpdate),
+                )
+            }
+
+            is UpdateUiState.Checking -> {
+                Text("Buscando actualizaciones…", color = textSecondary)
+            }
+
+            is UpdateUiState.UpToDate -> {
+                Text("Ya tienes la última versión", color = textSecondary)
+                Text(
+                    text = "Volver a comprobar",
+                    color = accent,
+                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = onCheckForUpdate),
+                )
+            }
+
+            is UpdateUiState.Available -> {
+                Text("Nueva versión disponible: ${updateState.info.versionName}", color = textPrimary)
+                Text(
+                    text = "Descargar e instalar",
+                    color = accent,
+                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = onDownloadUpdate),
+                )
+            }
+
+            is UpdateUiState.Downloading -> {
+                Text(
+                    text = "Descargando… ${(updateState.progress * 100).toInt()}%",
+                    color = textPrimary,
+                )
+            }
+
+            is UpdateUiState.ReadyToInstall -> {
+                Text("Descarga lista", color = textPrimary)
+                Text(
+                    text = "Instalar ahora",
+                    color = accent,
+                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = onInstallUpdate),
+                )
+            }
+
+            is UpdateUiState.Failed -> {
+                Text("Error: ${updateState.message}", color = textSecondary)
+                Text(
+                    text = "Reintentar",
+                    color = accent,
+                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = onCheckForUpdate),
+                )
+            }
+        }
+    }
 }
 
 @Composable

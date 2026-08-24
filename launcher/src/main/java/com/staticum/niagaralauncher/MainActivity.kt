@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
@@ -27,6 +28,8 @@ import com.staticum.niagaralauncher.ui.home.HomeViewModel
 import com.staticum.niagaralauncher.ui.settings.SettingsScreen
 import com.staticum.niagaralauncher.ui.settings.SettingsViewModel
 import com.staticum.niagaralauncher.ui.theme.LauncherTheme
+import com.staticum.niagaralauncher.update.UpdateUiState
+import com.staticum.niagaralauncher.update.UpdateViewModel
 import com.staticum.niagaralauncher.util.ViewModelFactory
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
 
@@ -37,6 +40,7 @@ class MainActivity : ComponentActivity() {
     private val factory by lazy { ViewModelFactory(this) }
     private val homeViewModel: HomeViewModel by viewModels { factory }
     private val settingsViewModel: SettingsViewModel by viewModels { factory }
+    private val updateViewModel: UpdateViewModel by viewModels { factory }
 
     private var onWallpaperPicked: ((Uri?) -> Unit)? = null
     private var onWidgetPicked: ((Int?) -> Unit)? = null
@@ -82,6 +86,7 @@ class MainActivity : ComponentActivity() {
             var screen by remember { mutableStateOf(Screen.HOME) }
             val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
             val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            val updateState by updateViewModel.state.collectAsStateWithLifecycle()
             val context = LocalContext.current
 
             LauncherTheme(palette = homeState.prefs.palette) {
@@ -102,6 +107,7 @@ class MainActivity : ComponentActivity() {
                             Screen.SETTINGS -> SettingsScreen(
                                 state = settingsState,
                                 allApps = homeState.allApps,
+                                updateState = updateState,
                                 onBack = { screen = Screen.HOME },
                                 onPaletteSelected = { settingsViewModel.setPalette(it.id) },
                                 onPickWallpaper = { pickWallpaper() },
@@ -113,6 +119,17 @@ class MainActivity : ComponentActivity() {
                                 onRemoveWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
                                     settingsViewModel.removeWidget(id)
+                                },
+                                onCheckForUpdate = updateViewModel::checkForUpdate,
+                                onDownloadUpdate = {
+                                    (updateState as? UpdateUiState.Available)?.let {
+                                        updateViewModel.downloadUpdate(it.info)
+                                    }
+                                },
+                                onInstallUpdate = {
+                                    (updateState as? UpdateUiState.ReadyToInstall)?.let {
+                                        installApk(it.file)
+                                    }
                                 },
                             )
                         }
@@ -134,6 +151,15 @@ class MainActivity : ComponentActivity() {
     private fun launchApp(app: AppInfo) {
         val factory = com.staticum.niagaralauncher.data.AppRepository(this)
         startActivity(factory.launchIntentFor(app))
+    }
+
+    private fun installApk(file: java.io.File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        startActivity(intent)
     }
 
     private fun pickWallpaper() {
