@@ -1,21 +1,28 @@
 package com.staticum.niagaralauncher.ui.home
 
+import android.view.SoundEffectConstants
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -24,18 +31,31 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
@@ -57,6 +77,17 @@ fun HomeScreen(
     }
     var dragX = 0f
     var dragY = 0f
+
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val view = LocalView.current
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .drop(1)
+            .collect { view.playSoundEffect(SoundEffectConstants.CLICK) }
+    }
 
     Box(
         modifier = Modifier
@@ -114,23 +145,97 @@ fun HomeScreen(
                 hintColor = palette.textSecondary,
             )
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                items(state.visibleApps, key = { it.key }) { app ->
-                    AppRow(
-                        app = app,
-                        iconSizeFactor = state.prefs.iconSizeFactor,
-                        monochrome = state.prefs.monochromeIcons,
-                        accentColor = palette.accent,
-                        textColor = palette.textPrimary,
-                        onClick = { onLaunchApp(app) },
-                        onLongClick = { onLongPressApp(app) },
-                        modifier = Modifier.animateItem(placementSpec = tween(220)),
-                    )
+            Row(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    items(state.visibleApps, key = { it.key }) { app ->
+                        AppRow(
+                            app = app,
+                            iconSizeFactor = state.prefs.iconSizeFactor,
+                            monochrome = state.prefs.monochromeIcons,
+                            accentColor = palette.accent,
+                            textColor = palette.textPrimary,
+                            onClick = { onLaunchApp(app) },
+                            onLongClick = { onLongPressApp(app) },
+                            modifier = Modifier.animateItem(placementSpec = tween(220)),
+                        )
+                    }
                 }
+
+                val availableLetters = remember(state.visibleApps) {
+                    state.visibleApps.mapNotNullTo(sortedSetOf()) { it.label.firstOrNull()?.uppercaseChar() }
+                }
+                AlphabetIndexBar(
+                    availableLetters = availableLetters,
+                    onLetterSelected = { letter ->
+                        val target = nearestAvailableLetter(letter, availableLetters) ?: return@AlphabetIndexBar
+                        val index = state.visibleApps.indexOfFirst {
+                            it.label.firstOrNull()?.uppercaseChar() == target
+                        }
+                        if (index >= 0) {
+                            coroutineScope.launch { listState.scrollToItem(index) }
+                        }
+                    },
+                    textColor = palette.textSecondary,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(24.dp),
+                )
             }
+        }
+    }
+}
+
+private val ALPHABET = ('A'..'Z').toList()
+
+private fun nearestAvailableLetter(letter: Char, available: Set<Char>): Char? {
+    if (available.isEmpty()) return null
+    if (letter in available) return letter
+    return available.minByOrNull { abs(it.code - letter.code) }
+}
+
+@Composable
+private fun AlphabetIndexBar(
+    availableLetters: Set<Char>,
+    onLetterSelected: (Char) -> Unit,
+    textColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
+) {
+    var heightPx by remember { mutableFloatStateOf(0f) }
+
+    fun selectLetterAt(y: Float) {
+        if (heightPx <= 0f) return
+        val index = (y / heightPx * ALPHABET.size).toInt().coerceIn(0, ALPHABET.size - 1)
+        onLetterSelected(ALPHABET[index])
+    }
+
+    Column(
+        modifier = modifier
+            .onGloballyPositioned { heightPx = it.size.height.toFloat() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    selectLetterAt(down.position.y)
+                    drag(down.id) { change ->
+                        change.consume()
+                        selectLetterAt(change.position.y)
+                    }
+                }
+            },
+        verticalArrangement = Arrangement.SpaceEvenly,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        ALPHABET.forEach { letter ->
+            Text(
+                text = letter.toString(),
+                color = if (letter in availableLetters) textColor else textColor.copy(alpha = 0.25f),
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
     }
 }
