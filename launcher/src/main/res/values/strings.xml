@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Launcher</string>
+    <string name="app_name">MinZen Launcher</string>
     <string name="search_hint">Buscar app…</string>
     <string name="settings_title">Ajustes del launcher</string>
     <string name="settings_palette">Paleta de colores</string>

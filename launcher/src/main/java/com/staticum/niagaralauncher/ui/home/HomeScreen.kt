@@ -1,9 +1,12 @@
 package com.staticum.niagaralauncher.ui.home
 
 import android.appwidget.AppWidgetManager
-import android.media.AudioManager
-import android.media.ToneGenerator
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,9 +53,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
+import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -82,15 +87,24 @@ fun HomeScreen(
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 40) }
-    DisposableEffect(Unit) { onDispose { toneGenerator.release() } }
+    val tickPlayer = remember { TickPlayer(context) }
+    DisposableEffect(Unit) { onDispose { tickPlayer.release() } }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }
             .distinctUntilChanged()
             .drop(1)
-            .collect { runCatching { toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP2, 15) } }
+            .collect { tickPlayer.play() }
+    }
+
+    var activeIndexLetter by remember { mutableStateOf<Char?>(null) }
+    LaunchedEffect(activeIndexLetter) {
+        if (activeIndexLetter != null) {
+            kotlinx.coroutines.delay(500)
+            activeIndexLetter = null
+        }
     }
 
     Box(
@@ -180,7 +194,10 @@ fun HomeScreen(
                 }
                 AlphabetIndexBar(
                     availableLetters = availableLetters,
-                    onLetterSelected = { letter ->
+                    activeLetter = activeIndexLetter,
+                    onLetterActive = { letter ->
+                        activeIndexLetter = letter
+                        if (letter == null) return@AlphabetIndexBar
                         val target = nearestAvailableLetter(letter, availableLetters) ?: return@AlphabetIndexBar
                         val index = state.visibleApps.indexOfFirst {
                             it.label.firstOrNull()?.uppercaseChar() == target
@@ -189,10 +206,32 @@ fun HomeScreen(
                             coroutineScope.launch { listState.scrollToItem(index) }
                         }
                     },
+                    accentColor = palette.accent,
                     textColor = palette.textSecondary,
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(24.dp),
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = activeIndexLetter != null,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .background(palette.surface, shape = androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = activeIndexLetter?.toString().orEmpty(),
+                    color = palette.accent,
+                    fontSize = 40.sp,
+                    style = MaterialTheme.typography.headlineLarge,
                 )
             }
         }
@@ -234,38 +273,47 @@ private fun nearestAvailableLetter(letter: Char, available: Set<Char>): Char? {
 @Composable
 private fun AlphabetIndexBar(
     availableLetters: Set<Char>,
-    onLetterSelected: (Char) -> Unit,
+    activeLetter: Char?,
+    onLetterActive: (Char?) -> Unit,
+    accentColor: androidx.compose.ui.graphics.Color,
     textColor: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
 ) {
     var heightPx by remember { mutableFloatStateOf(0f) }
 
-    fun selectLetterAt(y: Float) {
-        if (heightPx <= 0f) return
+    fun letterAt(y: Float): Char? {
+        if (heightPx <= 0f) return null
         val index = (y / heightPx * ALPHABET.size).toInt().coerceIn(0, ALPHABET.size - 1)
-        onLetterSelected(ALPHABET[index])
+        return ALPHABET[index]
     }
 
     Column(
         modifier = modifier
             .onGloballyPositioned { heightPx = it.size.height.toFloat() }
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { offset -> selectLetterAt(offset.y) })
+                detectTapGestures(onTap = { offset -> onLetterActive(letterAt(offset.y)) })
             }
             .pointerInput(Unit) {
                 detectDragGestures(
-                    onDragStart = { offset -> selectLetterAt(offset.y) },
-                    onDrag = { change, _ -> change.consume(); selectLetterAt(change.position.y) },
+                    onDragStart = { offset -> onLetterActive(letterAt(offset.y)) },
+                    onDrag = { change, _ -> change.consume(); onLetterActive(letterAt(change.position.y)) },
+                    onDragEnd = { onLetterActive(null) },
+                    onDragCancel = { onLetterActive(null) },
                 )
             },
         verticalArrangement = Arrangement.SpaceEvenly,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ALPHABET.forEach { letter ->
+            val isActive = letter == activeLetter
             Text(
                 text = letter.toString(),
-                color = if (letter in availableLetters) textColor else textColor.copy(alpha = 0.25f),
-                style = MaterialTheme.typography.labelSmall,
+                color = when {
+                    isActive -> accentColor
+                    letter in availableLetters -> textColor
+                    else -> textColor.copy(alpha = 0.25f)
+                },
+                style = if (isActive) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelSmall,
             )
         }
     }
