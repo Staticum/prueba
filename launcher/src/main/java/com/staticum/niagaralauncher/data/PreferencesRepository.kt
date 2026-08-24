@@ -23,6 +23,7 @@ data class LauncherPrefs(
     val monochromeIcons: Boolean = false,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
+    val favoriteAppKeys: List<String> = emptyList(),
 ) {
     val palette: ColorPalette get() = ColorPalette.fromId(paletteId)
 }
@@ -40,6 +41,7 @@ class PreferencesRepository(private val context: Context) {
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
         val GESTURE_LEFT = stringPreferencesKey("gesture_left")
         val GESTURE_RIGHT = stringPreferencesKey("gesture_right")
+        val FAVORITE_APPS = stringPreferencesKey("favorite_apps")
     }
 
     val prefsFlow: Flow<LauncherPrefs> = context.dataStore.data.map { prefs ->
@@ -57,6 +59,7 @@ class PreferencesRepository(private val context: Context) {
             monochromeIcons = prefs[Keys.MONOCHROME] ?: false,
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
+            favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
         )
     }
 
@@ -98,6 +101,28 @@ class PreferencesRepository(private val context: Context) {
         }
         context.dataStore.edit { prefs ->
             if (appKey == null) prefs.remove(key) else prefs[key] = appKey
+        }
+    }
+
+    suspend fun toggleFavoriteApp(appKey: String, favorite: Boolean) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            val updated = if (favorite) current + appKey else current - appKey
+            prefs[Keys.FAVORITE_APPS] = updated.joinToString(",")
+        }
+    }
+
+    suspend fun moveFavoriteApp(appKey: String, delta: Int) {
+        context.dataStore.edit { prefs ->
+            val current = (prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList())
+                .toMutableList()
+            val index = current.indexOf(appKey)
+            val target = index + delta
+            if (index < 0 || target < 0 || target >= current.size) return@edit
+            val tmp = current[index]
+            current[index] = current[target]
+            current[target] = tmp
+            prefs[Keys.FAVORITE_APPS] = current.joinToString(",")
         }
     }
 }

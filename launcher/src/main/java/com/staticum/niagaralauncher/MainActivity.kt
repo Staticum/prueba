@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.WallpaperManager
 import android.app.role.RoleManager
 import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -36,8 +37,9 @@ import com.staticum.niagaralauncher.update.UpdateViewModel
 import com.staticum.niagaralauncher.util.ViewModelFactory
 import com.staticum.niagaralauncher.util.isDefaultLauncher
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
+import com.staticum.niagaralauncher.widget.WidgetPickerScreen
 
-private enum class Screen { HOME, SETTINGS }
+private enum class Screen { HOME, SETTINGS, WIDGET_PICKER }
 
 class MainActivity : ComponentActivity() {
 
@@ -47,10 +49,10 @@ class MainActivity : ComponentActivity() {
     private val updateViewModel: UpdateViewModel by viewModels { factory }
 
     private var onWallpaperPicked: ((Uri?) -> Unit)? = null
-    private var onWidgetPicked: ((Int?) -> Unit)? = null
-    private var pendingConfigureWidgetId: Int = -1
+    private var pendingWidgetId: Int = -1
 
     private val isDefaultLauncherState = mutableStateOf(false)
+    private val screenState = mutableStateOf(Screen.HOME)
 
     private val requestHomeRoleLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -60,32 +62,31 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.GetContent(),
     ) { uri -> onWallpaperPicked?.invoke(uri) }
 
-    private val bindWidgetLauncher = registerForActivityResult(
+    /** Result of ACTION_APPWIDGET_CONFIGURE, launched after a successful bind. */
+    private val configureWidgetLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val id = pendingConfigureWidgetId
-        pendingConfigureWidgetId = -1
-        onWidgetPicked?.invoke(if (result.resultCode == Activity.RESULT_OK && id != -1) id else null)
+        val id = pendingWidgetId
+        pendingWidgetId = -1
+        if (result.resultCode == Activity.RESULT_OK && id != -1) {
+            settingsViewModel.addWidget(id)
+        } else if (id != -1) {
+            WidgetHostProvider.get(this).deleteAppWidgetId(id)
+        }
+        screenState.value = Screen.SETTINGS
     }
 
-    private val pickWidgetLauncher = registerForActivityResult(
+    /** Result of ACTION_APPWIDGET_BIND, only needed when bindAppWidgetIdIfAllowed() returns false. */
+    private val requestBindLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val id = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
-        if (result.resultCode != Activity.RESULT_OK || id == -1) {
-            onWidgetPicked?.invoke(null)
-            return@registerForActivityResult
-        }
-        val provider = WidgetHostProvider.manager(this).getAppWidgetInfo(id)
-        if (provider?.configure != null) {
-            val configureIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
-                component = provider.configure
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-            }
-            pendingConfigureWidgetId = id
-            bindWidgetLauncher.launch(configureIntent)
+        val id = pendingWidgetId
+        if (result.resultCode == Activity.RESULT_OK && id != -1) {
+            proceedAfterBind(id)
         } else {
-            onWidgetPicked?.invoke(id)
+            pendingWidgetId = -1
+            if (id != -1) WidgetHostProvider.get(this).deleteAppWidgetId(id)
+            screenState.value = Screen.SETTINGS
         }
     }
 
@@ -93,7 +94,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            var screen by remember { mutableStateOf(Screen.HOME) }
+            val screen by screenState
             val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
             val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
             val updateState by updateViewModel.state.collectAsStateWithLifecycle()
@@ -107,33 +108,35 @@ class MainActivity : ComponentActivity() {
                             Screen.HOME -> HomeScreen(
                                 state = homeState,
                                 isDefaultLauncher = isDefaultLauncher,
-                                widgetIds = settingsState.widgetIds,
+                                widgets = settingsState.widgets,
                                 onQueryChange = homeViewModel::onQueryChange,
                                 onLaunchApp = { app -> launchApp(app) },
                                 onLongPressApp = { app -> homeViewModel.toggleHidden(app, hidden = true) },
-                                onOpenSettings = { screen = Screen.SETTINGS },
+                                onOpenSettings = { screenState.value = Screen.SETTINGS },
                                 onSwipe = { direction ->
                                     homeState.favoriteFor(direction)?.let { launchApp(it) }
                                 },
                                 onSetAsDefaultLauncher = { requestDefaultLauncher() },
+                                onResizeWidget = settingsViewModel::setWidgetHeight,
                             )
 
                             Screen.SETTINGS -> SettingsScreen(
                                 state = settingsState,
                                 allApps = homeState.allApps,
                                 updateState = updateState,
-                                onBack = { screen = Screen.HOME },
+                                onBack = { screenState.value = Screen.HOME },
                                 onPaletteSelected = { settingsViewModel.setPalette(it.id) },
                                 onPickWallpaper = { pickWallpaper() },
                                 onClearWallpaper = { settingsViewModel.setUseWallpaper(false) },
                                 onIconSizeChange = settingsViewModel::setIconSizeFactor,
                                 onMonochromeChange = settingsViewModel::setMonochromeIcons,
                                 onToggleHidden = { app, hidden -> homeViewModel.toggleHidden(app, hidden) },
-                                onAddWidget = { pickWidget() },
+                                onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
                                     settingsViewModel.removeWidget(id)
                                 },
+                                onMoveWidget = settingsViewModel::moveWidget,
                                 onCheckForUpdate = updateViewModel::checkForUpdate,
                                 onDownloadUpdate = {
                                     (updateState as? UpdateUiState.Available)?.let {
@@ -145,6 +148,13 @@ class MainActivity : ComponentActivity() {
                                         installApk(it.file)
                                     }
                                 },
+                                onToggleFavorite = settingsViewModel::toggleFavoriteApp,
+                            )
+
+                            Screen.WIDGET_PICKER -> WidgetPickerScreen(
+                                palette = homeState.prefs.palette,
+                                onBack = { screenState.value = Screen.SETTINGS },
+                                onProviderSelected = { provider -> startBind(provider) },
                             )
                         }
                     }
@@ -200,19 +210,40 @@ class MainActivity : ComponentActivity() {
         pickImageLauncher.launch("image/*")
     }
 
-    private fun pickWidget() {
+    /** Reliable widget-add flow for a third-party launcher: allocate an id, try the
+     * automatic bind the OS grants to the current default launcher, and only fall back
+     * to the user-facing ACTION_APPWIDGET_BIND consent screen if that's refused. */
+    private fun startBind(provider: AppWidgetProviderInfo) {
         val host = WidgetHostProvider.get(this)
-        val newId = host.allocateAppWidgetId()
-        onWidgetPicked = { grantedId ->
-            if (grantedId != null) {
-                settingsViewModel.addWidget(grantedId)
-            } else {
-                host.deleteAppWidgetId(newId)
+        val manager = WidgetHostProvider.manager(this)
+        val id = host.allocateAppWidgetId()
+        pendingWidgetId = id
+
+        val allowed = manager.bindAppWidgetIdIfAllowed(id, provider.provider)
+        if (allowed) {
+            proceedAfterBind(id)
+        } else {
+            val bindIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
             }
+            requestBindLauncher.launch(bindIntent)
         }
-        val pickIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_PICK).apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, newId)
+    }
+
+    private fun proceedAfterBind(id: Int) {
+        val provider = WidgetHostProvider.manager(this).getAppWidgetInfo(id)
+        if (provider?.configure != null) {
+            pendingWidgetId = id
+            val configureIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
+                component = provider.configure
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            }
+            configureWidgetLauncher.launch(configureIntent)
+        } else {
+            pendingWidgetId = -1
+            settingsViewModel.addWidget(id)
+            screenState.value = Screen.SETTINGS
         }
-        pickWidgetLauncher.launch(pickIntent)
     }
 }

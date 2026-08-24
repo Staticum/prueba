@@ -1,5 +1,6 @@
 package com.staticum.niagaralauncher.ui.settings
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,14 +25,19 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.update.UpdateUiState
+import com.staticum.niagaralauncher.widget.WidgetHostProvider
 
 @Composable
 fun SettingsScreen(
@@ -47,9 +53,11 @@ fun SettingsScreen(
     onToggleHidden: (AppInfo, Boolean) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
+    onMoveWidget: (Int, Int) -> Unit,
     onCheckForUpdate: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
+    onToggleFavorite: (String, Boolean) -> Unit,
 ) {
     val palette = state.prefs.palette
 
@@ -129,23 +137,47 @@ fun SettingsScreen(
             item { SectionTitle("Widgets", palette.textSecondary) }
             item {
                 Column {
-                    state.widgetIds.forEach { id ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("Widget #$id", color = palette.textPrimary)
-                            Text(
-                                "Quitar",
-                                color = palette.accent,
-                                modifier = Modifier.clickable { onRemoveWidget(id) },
-                            )
-                        }
+                    state.widgetIds.forEachIndexed { index, id ->
+                        WidgetRow(
+                            id = id,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < state.widgetIds.lastIndex,
+                            textColor = palette.textPrimary,
+                            accentColor = palette.accent,
+                            onMoveUp = { onMoveWidget(id, -1) },
+                            onMoveDown = { onMoveWidget(id, 1) },
+                            onRemove = { onRemoveWidget(id) },
+                        )
                     }
                     Text(
                         text = "+ Añadir widget",
                         color = palette.accent,
                         modifier = Modifier.padding(vertical = 8.dp).clickable(onClick = onAddWidget),
+                    )
+                }
+            }
+
+            item { SectionTitle("Apps favoritas", palette.textSecondary) }
+            item {
+                Text(
+                    text = "Aparecen siempre visibles debajo de los widgets, sin buscarlas",
+                    color = palette.textSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            items(allApps, key = { "fav_${it.key}" }) { app ->
+                val favorite = app.key in state.prefs.favoriteAppKeys
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(app.label, color = if (favorite) palette.textPrimary else palette.textSecondary)
+                    Text(
+                        text = if (favorite) "Quitar" else "Agregar",
+                        color = palette.accent,
+                        modifier = Modifier.clickable { onToggleFavorite(app.key, !favorite) },
                     )
                 }
             }
@@ -191,6 +223,51 @@ private fun SectionTitle(text: String, color: androidx.compose.ui.graphics.Color
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
     )
+}
+
+@Composable
+private fun WidgetRow(
+    id: Int,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    textColor: androidx.compose.ui.graphics.Color,
+    accentColor: androidx.compose.ui.graphics.Color,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val context = LocalContext.current
+    val providerInfo = remember(id) { WidgetHostProvider.manager(context).getAppWidgetInfo(id) }
+    val label = providerInfo?.loadLabel(context.packageManager) ?: "Widget"
+    val icon = remember(id, providerInfo) {
+        providerInfo?.let { info -> runCatching { info.loadIcon(context, 0) }.getOrNull() }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Image(
+                    bitmap = icon.toBitmap(width = 72, height = 72).asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            Text(label, color = textColor, modifier = Modifier.padding(start = 8.dp))
+        }
+        Row {
+            if (canMoveUp) {
+                Text("▲", color = accentColor, modifier = Modifier.padding(horizontal = 8.dp).clickable(onClick = onMoveUp))
+            }
+            if (canMoveDown) {
+                Text("▼", color = accentColor, modifier = Modifier.padding(horizontal = 8.dp).clickable(onClick = onMoveDown))
+            }
+            Text("Quitar", color = accentColor, modifier = Modifier.clickable(onClick = onRemove))
+        }
+    }
 }
 
 @Composable

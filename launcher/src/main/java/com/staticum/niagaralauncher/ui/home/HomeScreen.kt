@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -59,6 +60,7 @@ import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
 import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
+import com.staticum.niagaralauncher.widget.WidgetEntry
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -68,13 +70,14 @@ import kotlin.math.abs
 fun HomeScreen(
     state: HomeUiState,
     isDefaultLauncher: Boolean,
-    widgetIds: List<Int>,
+    widgets: List<WidgetEntry>,
     onQueryChange: (String) -> Unit,
     onLaunchApp: (AppInfo) -> Unit,
     onLongPressApp: (AppInfo) -> Unit,
     onOpenSettings: () -> Unit,
     onSwipe: (SwipeDirection) -> Unit,
     onSetAsDefaultLauncher: () -> Unit,
+    onResizeWidget: (Int, Int) -> Unit,
 ) {
     val palette = state.prefs.palette
     val backgroundColor = if (state.prefs.useWallpaper) {
@@ -156,8 +159,21 @@ fun HomeScreen(
                 )
             }
 
-            if (widgetIds.isNotEmpty()) {
-                WidgetArea(widgetIds = widgetIds)
+            if (widgets.isNotEmpty()) {
+                WidgetArea(widgets = widgets, onResizeWidget = onResizeWidget)
+            }
+
+            val favoriteApps = remember(state.allApps, state.prefs.favoriteAppKeys) {
+                state.prefs.favoriteAppKeys.mapNotNull { key -> state.allApps.firstOrNull { it.key == key } }
+            }
+            if (favoriteApps.isNotEmpty()) {
+                FavoritesRow(
+                    apps = favoriteApps,
+                    iconSizeFactor = state.prefs.iconSizeFactor,
+                    monochrome = state.prefs.monochromeIcons,
+                    accentColor = palette.accent,
+                    onLaunchApp = onLaunchApp,
+                )
             }
 
             SearchField(
@@ -238,10 +254,18 @@ fun HomeScreen(
     }
 }
 
+private const val MIN_WIDGET_HEIGHT_DP = 60
+private const val MAX_WIDGET_HEIGHT_DP = 400
+
 @Composable
-private fun WidgetArea(widgetIds: List<Int>, modifier: Modifier = Modifier) {
+private fun WidgetArea(
+    widgets: List<WidgetEntry>,
+    onResizeWidget: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val manager = remember(context) { AppWidgetManager.getInstance(context) }
+    val density = LocalDensity.current
 
     Column(
         modifier = modifier
@@ -249,15 +273,82 @@ private fun WidgetArea(widgetIds: List<Int>, modifier: Modifier = Modifier) {
             .padding(bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        widgetIds.forEach { id ->
-            val providerInfo = remember(id) { manager.getAppWidgetInfo(id) }
+        widgets.forEach { entry ->
+            val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
             if (providerInfo != null) {
-                ComposeAppWidgetHost(
-                    appWidgetId = id,
-                    providerInfo = providerInfo,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                val minHeightDp = providerInfo.minHeight.coerceAtLeast(MIN_WIDGET_HEIGHT_DP)
+                val heightDp = (entry.heightDp ?: minHeightDp)
+                    .coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    ComposeAppWidgetHost(
+                        appWidgetId = entry.id,
+                        providerInfo = providerInfo,
+                        modifier = Modifier.fillMaxWidth().height(heightDp.dp),
+                    )
+                    var dragHeightPx by remember(entry.id) { mutableFloatStateOf(with(density) { heightDp.dp.toPx() }) }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .pointerInput(entry.id) {
+                                detectDragGestures(
+                                    onDragStart = { dragHeightPx = with(density) { heightDp.dp.toPx() } },
+                                    onDrag = { change, offset ->
+                                        change.consume()
+                                        dragHeightPx += offset.y
+                                        val newHeightDp = with(density) { dragHeightPx.toDp().value.toInt() }
+                                            .coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
+                                        onResizeWidget(entry.id, newHeightDp)
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(32.dp)
+                                .height(3.dp)
+                                .background(
+                                    androidx.compose.ui.graphics.Color.White.copy(alpha = 0.25f),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp),
+                                ),
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun FavoritesRow(
+    apps: List<AppInfo>,
+    iconSizeFactor: Float,
+    monochrome: Boolean,
+    accentColor: androidx.compose.ui.graphics.Color,
+    onLaunchApp: (AppInfo) -> Unit,
+) {
+    val density = LocalDensity.current
+    val baseSizeDp = 40.dp
+    val iconSize = baseSizeDp * iconSizeFactor
+
+    androidx.compose.foundation.lazy.LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        items(apps, key = { "fav_${it.key}" }) { app ->
+            Image(
+                bitmap = app.icon.toBitmap(
+                    width = with(density) { iconSize.toPx() }.toInt().coerceAtLeast(1),
+                    height = with(density) { iconSize.toPx() }.toInt().coerceAtLeast(1),
+                ).asImageBitmap(),
+                contentDescription = app.label,
+                colorFilter = if (monochrome) ColorFilter.tint(accentColor) else null,
+                modifier = Modifier
+                    .size(iconSize)
+                    .clickable { onLaunchApp(app) },
+            )
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.data.PreferencesRepository
+import com.staticum.niagaralauncher.widget.WidgetEntry
 import com.staticum.niagaralauncher.widget.WidgetRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,8 +14,10 @@ import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val prefs: LauncherPrefs = LauncherPrefs(),
-    val widgetIds: List<Int> = emptyList(),
-)
+    val widgets: List<WidgetEntry> = emptyList(),
+) {
+    val widgetIds: List<Int> get() = widgets.map { it.id }
+}
 
 class SettingsViewModel(
     private val preferencesRepository: PreferencesRepository,
@@ -22,8 +25,8 @@ class SettingsViewModel(
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
-        preferencesRepository.prefsFlow, widgetRepository.widgetIdsFlow,
-    ) { prefs, widgetIds -> SettingsUiState(prefs, widgetIds) }
+        preferencesRepository.prefsFlow, widgetRepository.widgetsFlow,
+    ) { prefs, widgets -> SettingsUiState(prefs, widgets) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
     fun setPalette(id: String) = viewModelScope.launch { preferencesRepository.setPalette(id) }
@@ -43,4 +46,15 @@ class SettingsViewModel(
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
     fun removeWidget(id: Int) = viewModelScope.launch { widgetRepository.removeWidgetId(id) }
+
+    fun moveWidget(id: Int, delta: Int) = viewModelScope.launch { widgetRepository.moveWidget(id, delta) }
+
+    fun setWidgetHeight(id: Int, heightDp: Int) =
+        viewModelScope.launch { widgetRepository.setWidgetHeight(id, heightDp) }
+
+    fun toggleFavoriteApp(appKey: String, favorite: Boolean) =
+        viewModelScope.launch { preferencesRepository.toggleFavoriteApp(appKey, favorite) }
+
+    fun moveFavoriteApp(appKey: String, delta: Int) =
+        viewModelScope.launch { preferencesRepository.moveFavoriteApp(appKey, delta) }
 }
