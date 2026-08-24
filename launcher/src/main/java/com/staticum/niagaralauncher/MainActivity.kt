@@ -1,0 +1,166 @@
+package com.staticum.niagaralauncher
+
+import android.app.Activity
+import android.app.WallpaperManager
+import android.appwidget.AppWidgetManager
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.staticum.niagaralauncher.data.AppInfo
+import com.staticum.niagaralauncher.data.SwipeDirection
+import com.staticum.niagaralauncher.ui.home.HomeScreen
+import com.staticum.niagaralauncher.ui.home.HomeViewModel
+import com.staticum.niagaralauncher.ui.settings.SettingsScreen
+import com.staticum.niagaralauncher.ui.settings.SettingsViewModel
+import com.staticum.niagaralauncher.ui.theme.LauncherTheme
+import com.staticum.niagaralauncher.util.ViewModelFactory
+import com.staticum.niagaralauncher.widget.WidgetHostProvider
+
+private enum class Screen { HOME, SETTINGS }
+
+class MainActivity : ComponentActivity() {
+
+    private val factory by lazy { ViewModelFactory(this) }
+    private val homeViewModel: HomeViewModel by viewModels { factory }
+    private val settingsViewModel: SettingsViewModel by viewModels { factory }
+
+    private var onWallpaperPicked: ((Uri?) -> Unit)? = null
+    private var onWidgetPicked: ((Int?) -> Unit)? = null
+    private var pendingConfigureWidgetId: Int = -1
+
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri -> onWallpaperPicked?.invoke(uri) }
+
+    private val bindWidgetLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val id = pendingConfigureWidgetId
+        pendingConfigureWidgetId = -1
+        onWidgetPicked?.invoke(if (result.resultCode == Activity.RESULT_OK && id != -1) id else null)
+    }
+
+    private val pickWidgetLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val id = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
+        if (result.resultCode != Activity.RESULT_OK || id == -1) {
+            onWidgetPicked?.invoke(null)
+            return@registerForActivityResult
+        }
+        val provider = WidgetHostProvider.manager(this).getAppWidgetInfo(id)
+        if (provider?.configure != null) {
+            val configureIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
+                component = provider.configure
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            }
+            pendingConfigureWidgetId = id
+            bindWidgetLauncher.launch(configureIntent)
+        } else {
+            onWidgetPicked?.invoke(id)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        setContent {
+            var screen by remember { mutableStateOf(Screen.HOME) }
+            val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
+            val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+
+            LauncherTheme(palette = homeState.prefs.palette) {
+                Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
+                    Box(modifier = Modifier) {
+                        when (screen) {
+                            Screen.HOME -> HomeScreen(
+                                state = homeState,
+                                onQueryChange = homeViewModel::onQueryChange,
+                                onLaunchApp = { app -> launchApp(app) },
+                                onLongPressApp = { app -> homeViewModel.toggleHidden(app, hidden = true) },
+                                onOpenSettings = { screen = Screen.SETTINGS },
+                                onSwipe = { direction ->
+                                    homeState.favoriteFor(direction)?.let { launchApp(it) }
+                                },
+                            )
+
+                            Screen.SETTINGS -> SettingsScreen(
+                                state = settingsState,
+                                allApps = homeState.allApps,
+                                onBack = { screen = Screen.HOME },
+                                onPaletteSelected = { settingsViewModel.setPalette(it.id) },
+                                onPickWallpaper = { pickWallpaper() },
+                                onClearWallpaper = { settingsViewModel.setUseWallpaper(false) },
+                                onIconSizeChange = settingsViewModel::setIconSizeFactor,
+                                onMonochromeChange = settingsViewModel::setMonochromeIcons,
+                                onToggleHidden = { app, hidden -> homeViewModel.toggleHidden(app, hidden) },
+                                onAddWidget = { pickWidget() },
+                                onRemoveWidget = { id ->
+                                    WidgetHostProvider.get(context).deleteAppWidgetId(id)
+                                    settingsViewModel.removeWidget(id)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                WidgetHostProvider.get(context).startListening()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        homeViewModel.refreshApps()
+    }
+
+    private fun launchApp(app: AppInfo) {
+        val factory = com.staticum.niagaralauncher.data.AppRepository(this)
+        startActivity(factory.launchIntentFor(app))
+    }
+
+    private fun pickWallpaper() {
+        onWallpaperPicked = { uri ->
+            if (uri != null) {
+                WallpaperManager.getInstance(this).setStream(contentResolver.openInputStream(uri))
+                settingsViewModel.setWallpaperUri(uri.toString())
+                settingsViewModel.setUseWallpaper(true)
+            }
+            // uri == null means the user cancelled the picker; leave the previous setting untouched.
+        }
+        pickImageLauncher.launch("image/*")
+    }
+
+    private fun pickWidget() {
+        val host = WidgetHostProvider.get(this)
+        val newId = host.allocateAppWidgetId()
+        onWidgetPicked = { grantedId ->
+            if (grantedId != null) {
+                settingsViewModel.addWidget(grantedId)
+            } else {
+                host.deleteAppWidgetId(newId)
+            }
+        }
+        val pickIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_PICK).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, newId)
+        }
+        pickWidgetLauncher.launch(pickIntent)
+    }
+}

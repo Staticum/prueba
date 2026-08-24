@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Launcher</string>
+    <string name="search_hint">Buscar app…</string>
+    <string name="settings_title">Ajustes del launcher</string>
+    <string name="settings_palette">Paleta de colores</string>
+    <string name="settings_wallpaper">Fondo de pantalla</string>
+    <string name="settings_icon_size">Tamaño de iconos</string>
+    <string name="settings_hidden_apps">Apps ocultas</string>
+    <string name="settings_gestures">Gestos rápidos</string>
+    <string name="wallpaper_pick_image">Elegir imagen…</string>
+    <string name="wallpaper_none">Sin imagen (usar color de paleta)</string>
+    <string name="add_widget">Añadir widget</string>
+    <string name="remove_widget">Quitar widget</string>
+    <string name="hide_app">Ocultar</string>
+    <string name="unhide_app">Mostrar</string>
+    <string name="set_as_favorite">Asignar a gesto</string>
+</resources>

@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "UroDiario"
 include(":app")
+include(":launcher")
