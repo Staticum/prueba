@@ -26,7 +26,12 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +44,8 @@ import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.data.ScreenTintMode
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.update.UpdateUiState
+import com.staticum.niagaralauncher.util.SoundOption
+import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
 
 @Composable
@@ -53,6 +60,8 @@ fun SettingsScreen(
     onIconSizeChange: (Float) -> Unit,
     onMonochromeChange: (Boolean) -> Unit,
     onScreenTintModeChange: (ScreenTintMode) -> Unit,
+    onSoundSelected: (String) -> Unit,
+    onSoundVolumeChange: (Float) -> Unit,
     onToggleHidden: (AppInfo, Boolean) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
@@ -65,6 +74,18 @@ fun SettingsScreen(
     onClearCrashLog: () -> Unit,
 ) {
     val palette = state.prefs.palette
+    val context = LocalContext.current
+    val previewPlayer = remember { TickPlayer(context) }
+    DisposableEffect(Unit) { onDispose { previewPlayer.release() } }
+    LaunchedEffect(state.prefs.soundVolume) { previewPlayer.setVolume(state.prefs.soundVolume) }
+    var previewRequest by remember { mutableStateOf(0) }
+    var previewOption by remember { mutableStateOf(SoundOption.DEFAULT) }
+    LaunchedEffect(previewRequest) {
+        if (previewRequest == 0) return@LaunchedEffect
+        previewPlayer.setSound(previewOption)
+        kotlinx.coroutines.delay(80)
+        previewPlayer.play()
+    }
 
     Column(
         modifier = Modifier
@@ -125,6 +146,46 @@ fun SettingsScreen(
                     onValueChange = onIconSizeChange,
                     valueRange = 0.6f..1.8f,
                 )
+            }
+
+            item { SectionTitle("Sonido de scroll / índice A-Z", palette.textSecondary) }
+            item {
+                Column {
+                    SoundOption.entries.forEach { option ->
+                        val selected = option.id == state.prefs.soundId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSoundSelected(option.id)
+                                    previewOption = option
+                                    previewRequest++
+                                }
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = option.label,
+                                color = if (selected) palette.accent else palette.textPrimary,
+                            )
+                            if (selected) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = palette.accent)
+                            }
+                        }
+                    }
+                    Text(
+                        text = "Volumen",
+                        color = palette.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                    Slider(
+                        value = state.prefs.soundVolume,
+                        onValueChange = onSoundVolumeChange,
+                        valueRange = 0f..1f,
+                    )
+                }
             }
 
             item { SectionTitle("Iconos monocromáticos", palette.textSecondary) }

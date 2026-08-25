@@ -47,6 +47,11 @@ class SettingsViewModel(
     fun setScreenTintMode(mode: ScreenTintMode) =
         viewModelScope.launch { preferencesRepository.setScreenTintMode(mode) }
 
+    fun setSoundId(id: String) = viewModelScope.launch { preferencesRepository.setSoundId(id) }
+
+    fun setSoundVolume(volume: Float) =
+        viewModelScope.launch { preferencesRepository.setSoundVolume(volume) }
+
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
     fun removeWidget(id: Int) = viewModelScope.launch { widgetRepository.removeWidgetId(id) }

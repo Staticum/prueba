@@ -63,6 +63,7 @@ import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
 import com.staticum.niagaralauncher.widget.WidgetEntry
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlin.math.abs
 
 @Composable
@@ -95,26 +96,26 @@ fun HomeScreen(
 
     val tickPlayer = remember { TickPlayer(context) }
     DisposableEffect(Unit) { onDispose { tickPlayer.release() } }
+    LaunchedEffect(state.prefs.soundId) { tickPlayer.setSound(com.staticum.niagaralauncher.util.SoundOption.fromId(state.prefs.soundId)) }
+    LaunchedEffect(state.prefs.soundVolume) { tickPlayer.setVolume(state.prefs.soundVolume) }
 
     var selectedWidgetId by remember { mutableStateOf<Int?>(null) }
 
     var activeIndexLetter by remember { mutableStateOf<Char?>(null) }
     LaunchedEffect(activeIndexLetter) {
         if (activeIndexLetter != null) {
+            tickPlayer.play()
             kotlinx.coroutines.delay(500)
             activeIndexLetter = null
         }
     }
 
-    // A single continuous wind loop for both plain list scrolling and dragging the
-    // A-Z index — rather than restarting the sample from zero on every letter/index
-    // change, which read as a stutter instead of one continuous sound.
+    // A short one-shot per index change while scrolling the app list.
     LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress to activeIndexLetter }
+        snapshotFlow { listState.firstVisibleItemIndex }
             .distinctUntilChanged()
-            .collect { (scrolling, letter) ->
-                if (scrolling || letter != null) tickPlayer.startLoop() else tickPlayer.stopLoop()
-            }
+            .drop(1)
+            .collect { tickPlayer.play() }
     }
 
     Box(

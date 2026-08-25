@@ -3,15 +3,15 @@ package com.staticum.niagaralauncher.util
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
-import com.staticum.niagaralauncher.R
 
-/** Plays a synthesized oriental-flute-style melodic loop for scroll/index feedback,
+/** Plays a short, user-selectable one-shot sound for scroll/index feedback,
  * independent of the system "touch sounds" setting (which only gates
- * [android.view.View.playSoundEffect]). */
-class TickPlayer(context: Context) {
+ * [android.view.View.playSoundEffect]). Call [setSound] when the chosen
+ * [SoundOption] changes and [setVolume] when the volume preference changes. */
+class TickPlayer(private val context: Context) {
 
     private val soundPool = SoundPool.Builder()
-        .setMaxStreams(2)
+        .setMaxStreams(4)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -20,32 +20,28 @@ class TickPlayer(context: Context) {
         )
         .build()
 
-    private val soundId = soundPool.load(context, R.raw.tick, 1)
+    private var loadedResId: Int = -1
+    private var soundId: Int = -1
     @Volatile private var isLoaded = false
-    private var loopStreamId: Int? = null
+    private var volume = 0.5f
 
-    init {
+    fun setSound(option: SoundOption) {
+        if (option.resId == loadedResId) return
+        isLoaded = false
+        loadedResId = option.resId
+        if (option.resId == -1) return
+        soundId = soundPool.load(context, option.resId, 1)
         soundPool.setOnLoadCompleteListener { _, sampleId, status ->
             if (sampleId == soundId && status == 0) isLoaded = true
         }
     }
 
+    fun setVolume(volume: Float) {
+        this.volume = volume.coerceIn(0f, 1f)
+    }
+
     fun play() {
-        if (isLoaded) soundPool.play(soundId, 0.3f, 0.3f, 0, 0, 1f)
-    }
-
-    /** Loops the melody continuously (loop = -1) and seamlessly (the sample itself is
-     * crossfaded end-to-start) instead of restarting a short clip from zero on every
-     * index change, so scrolling reads as one continuous flute phrase. */
-    fun startLoop() {
-        if (isLoaded && loopStreamId == null) {
-            loopStreamId = soundPool.play(soundId, 0.3f, 0.3f, 0, -1, 1f)
-        }
-    }
-
-    fun stopLoop() {
-        loopStreamId?.let { soundPool.stop(it) }
-        loopStreamId = null
+        if (isLoaded) soundPool.play(soundId, volume, volume, 0, 0, 1f)
     }
 
     fun release() {

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
+import com.staticum.niagaralauncher.util.SoundOption
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -28,6 +29,8 @@ data class LauncherPrefs(
     val iconSizeFactor: Float = 1.0f,
     val monochromeIcons: Boolean = false,
     val screenTintMode: ScreenTintMode = ScreenTintMode.NONE,
+    val soundId: String = SoundOption.DEFAULT.id,
+    val soundVolume: Float = 0.5f,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
     val favoriteAppKeys: List<String> = emptyList(),
@@ -44,6 +47,8 @@ class PreferencesRepository(private val context: Context) {
         val ICON_SIZE = floatPreferencesKey("icon_size_factor")
         val MONOCHROME = booleanPreferencesKey("monochrome_icons")
         val SCREEN_TINT_MODE = stringPreferencesKey("screen_tint_mode")
+        val SOUND_ID = stringPreferencesKey("sound_id")
+        val SOUND_VOLUME = floatPreferencesKey("sound_volume")
         val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
         val GESTURE_UP = stringPreferencesKey("gesture_up")
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
@@ -68,6 +73,8 @@ class PreferencesRepository(private val context: Context) {
             screenTintMode = prefs[Keys.SCREEN_TINT_MODE]?.let { raw ->
                 runCatching { ScreenTintMode.valueOf(raw) }.getOrNull()
             } ?: ScreenTintMode.NONE,
+            soundId = prefs[Keys.SOUND_ID] ?: SoundOption.DEFAULT.id,
+            soundVolume = prefs[Keys.SOUND_VOLUME] ?: 0.5f,
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
             favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -98,6 +105,14 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setScreenTintMode(mode: ScreenTintMode) {
         context.dataStore.edit { it[Keys.SCREEN_TINT_MODE] = mode.name }
+    }
+
+    suspend fun setSoundId(id: String) {
+        context.dataStore.edit { it[Keys.SOUND_ID] = id }
+    }
+
+    suspend fun setSoundVolume(volume: Float) {
+        context.dataStore.edit { it[Keys.SOUND_VOLUME] = volume.coerceIn(0f, 1f) }
     }
 
     suspend fun toggleHiddenApp(appKey: String, hidden: Boolean) {

@@ -153,6 +153,8 @@ class MainActivity : ComponentActivity() {
                                 onIconSizeChange = settingsViewModel::setIconSizeFactor,
                                 onMonochromeChange = settingsViewModel::setMonochromeIcons,
                                 onScreenTintModeChange = settingsViewModel::setScreenTintMode,
+                                onSoundSelected = settingsViewModel::setSoundId,
+                                onSoundVolumeChange = settingsViewModel::setSoundVolume,
                                 onToggleHidden = { app, hidden -> homeViewModel.toggleHidden(app, hidden) },
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
