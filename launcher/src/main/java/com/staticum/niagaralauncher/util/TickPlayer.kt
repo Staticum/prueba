@@ -5,7 +5,7 @@ import android.media.AudioAttributes
 import android.media.SoundPool
 import com.staticum.niagaralauncher.R
 
-/** Plays a short synthesized click for scroll/index feedback, independent of the
+/** Plays a synthesized ambient loop for scroll/index feedback, independent of the
  * system "touch sounds" setting (which only gates [android.view.View.playSoundEffect]). */
 class TickPlayer(context: Context) {
 
@@ -33,11 +33,12 @@ class TickPlayer(context: Context) {
         if (isLoaded) soundPool.play(soundId, 0.3f, 0.3f, 0, 0, 1f)
     }
 
-    /** Loops the wind sample continuously (loop = -1) instead of restarting it from
-     * zero on every index change, so scrolling reads as one continuous sound. */
+    /** Loops the ambient sample continuously (loop = -1) and seamlessly (the sample
+     * itself is crossfaded end-to-start) instead of restarting a short clip from zero
+     * on every index change, so scrolling reads as one continuous relaxing tone. */
     fun startLoop() {
         if (isLoaded && loopStreamId == null) {
-            loopStreamId = soundPool.play(soundId, 0.25f, 0.25f, 0, -1, 1f)
+            loopStreamId = soundPool.play(soundId, 0.35f, 0.35f, 0, -1, 1f)
         }
     }
 

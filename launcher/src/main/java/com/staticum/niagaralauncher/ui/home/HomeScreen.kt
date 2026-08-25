@@ -307,45 +307,52 @@ private fun WidgetArea(
         result
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        rows.forEach { row ->
-            if (row.size == 1) {
-                val entry = row[0]
-                val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
-                if (providerInfo == null) {
-                    OrphanedWidgetRow(entry, onRemoveInvalidWidget)
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val density = LocalDensity.current
+        val fullWidthPx = with(density) { maxWidth.toPx() }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            rows.forEach { row ->
+                if (row.size == 1) {
+                    val entry = row[0]
+                    val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
+                    if (providerInfo == null) {
+                        OrphanedWidgetRow(entry, onRemoveInvalidWidget)
+                    } else {
+                        WidgetCell(
+                            entry = entry,
+                            providerInfo = providerInfo,
+                            fullWidthPx = fullWidthPx,
+                            onResizeWidget = onResizeWidget,
+                            onResizeWidgetWidth = onResizeWidgetWidth,
+                            standalone = true,
+                        )
+                    }
                 } else {
-                    WidgetCell(
-                        entry = entry,
-                        providerInfo = providerInfo,
-                        onResizeWidget = onResizeWidget,
-                        onResizeWidgetWidth = onResizeWidgetWidth,
-                        standalone = true,
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    row.forEach { entry ->
-                        val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
-                        if (providerInfo == null) {
-                            Box(modifier = Modifier.weight(1f)) { OrphanedWidgetRow(entry, onRemoveInvalidWidget) }
-                        } else {
-                            WidgetCell(
-                                entry = entry,
-                                providerInfo = providerInfo,
-                                onResizeWidget = onResizeWidget,
-                                onResizeWidgetWidth = onResizeWidgetWidth,
-                                standalone = false,
-                                modifier = Modifier.weight(1f),
-                            )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        row.forEach { entry ->
+                            val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
+                            if (providerInfo == null) {
+                                Box(modifier = Modifier.weight(1f)) { OrphanedWidgetRow(entry, onRemoveInvalidWidget) }
+                            } else {
+                                WidgetCell(
+                                    entry = entry,
+                                    providerInfo = providerInfo,
+                                    fullWidthPx = fullWidthPx,
+                                    onResizeWidget = onResizeWidget,
+                                    onResizeWidgetWidth = onResizeWidgetWidth,
+                                    standalone = false,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
                 }
@@ -367,14 +374,16 @@ private fun OrphanedWidgetRow(entry: WidgetEntry, onRemoveInvalidWidget: (Int) -
     )
 }
 
-/** One widget host plus its resize handles. When [standalone] (its own full row),
- * the width handle narrows it within the whole row, centered; when sharing a row
- * (paired with another half-width widget via [Modifier.weight]) it fills its slot
- * and only the height can be adjusted, since the row itself already defines the split. */
+/** One widget host plus its resize handles. The width handle is always shown - even
+ * when the widget is currently paired side-by-side with another - and always measures
+ * against the full screen width ([fullWidthPx]), not the widget's own (possibly halved)
+ * slot. That's what lets dragging it back out past 50% "un-pair" the widget: on the
+ * next recomposition it no longer qualifies as "half" and reclaims its own full row. */
 @Composable
 private fun WidgetCell(
     entry: WidgetEntry,
     providerInfo: android.appwidget.AppWidgetProviderInfo,
+    fullWidthPx: Float,
     onResizeWidget: (Int, Int) -> Unit,
     onResizeWidgetWidth: (Int, Int) -> Unit,
     standalone: Boolean,
@@ -390,11 +399,10 @@ private fun WidgetCell(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (standalone) {
-            androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val fullWidthPx = with(density) { maxWidth.toPx() }
-                var dragWidthPx by remember(entry.id) { mutableFloatStateOf(fullWidthPx * widthPercent / 100f) }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            var dragWidthPx by remember(entry.id) { mutableFloatStateOf(fullWidthPx * widthPercent / 100f) }
 
+            if (standalone) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     ComposeAppWidgetHost(
                         appWidgetId = entry.id,
@@ -402,38 +410,37 @@ private fun WidgetCell(
                         modifier = Modifier.fillMaxWidth(widthPercent / 100f).height(heightDp.dp),
                     )
                 }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .height(heightDp.dp)
-                        .width(24.dp)
-                        .pointerInput(entry.id, fullWidthPx) {
-                            detectDragGestures(
-                                onDragStart = { dragWidthPx = fullWidthPx * widthPercent / 100f },
-                                onDrag = { change, offset ->
-                                    change.consume()
-                                    dragWidthPx += offset.x * 2
-                                    val newWidthPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
-                                        .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
-                                    onResizeWidgetWidth(entry.id, newWidthPercent)
-                                },
-                            )
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ResizeGrip(vertical = true)
-                }
+            } else {
+                // Sharing a row: the row's weight() sets the actual rendered width,
+                // this widget fills its whole slot until dragged wide enough to un-pair.
+                ComposeAppWidgetHost(
+                    appWidgetId = entry.id,
+                    providerInfo = providerInfo,
+                    modifier = Modifier.fillMaxWidth().height(heightDp.dp),
+                )
             }
-        } else {
-            // Sharing a row: the row's weight() already sets this widget's width, so
-            // no side handle - just resize back to full width from Settings, or drag
-            // it past 50% here isn't offered since there's no room to grow within the row.
-            ComposeAppWidgetHost(
-                appWidgetId = entry.id,
-                providerInfo = providerInfo,
-                modifier = Modifier.fillMaxWidth().height(heightDp.dp),
-            )
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .height(heightDp.dp)
+                    .width(24.dp)
+                    .pointerInput(entry.id, fullWidthPx) {
+                        detectDragGestures(
+                            onDragStart = { dragWidthPx = fullWidthPx * widthPercent / 100f },
+                            onDrag = { change, offset ->
+                                change.consume()
+                                dragWidthPx += offset.x * 2
+                                val newWidthPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
+                                    .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
+                                onResizeWidgetWidth(entry.id, newWidthPercent)
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                ResizeGrip(vertical = true)
+            }
         }
 
         var dragHeightPx by remember(entry.id) { mutableFloatStateOf(with(density) { heightDp.dp.toPx() }) }
