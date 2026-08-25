@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -140,7 +141,7 @@ class MainActivity : ComponentActivity() {
                                 onClearWallpaper = { settingsViewModel.setUseWallpaper(false) },
                                 onIconSizeChange = settingsViewModel::setIconSizeFactor,
                                 onMonochromeChange = settingsViewModel::setMonochromeIcons,
-                                onGrayscaleChange = settingsViewModel::setGrayscaleMode,
+                                onScreenTintModeChange = settingsViewModel::setScreenTintMode,
                                 onToggleHidden = { app, hidden -> homeViewModel.toggleHidden(app, hidden) },
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
@@ -172,18 +173,44 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Grayscale mode desaturates the whole screen as a single rendered layer,
-            // including native widget Views embedded via AndroidView, which a Compose
-            // ColorFilter can't reach since they aren't Compose draw calls.
-            LaunchedEffect(homeState.prefs.grayscaleMode) {
+            // Screen tint desaturates (and optionally re-tints) the whole screen as a
+            // single rendered layer, including native widget Views embedded via
+            // AndroidView, which a Compose ColorFilter can't reach since they aren't
+            // Compose draw calls.
+            val tintMode = homeState.prefs.screenTintMode
+            val tintAccent = homeState.prefs.palette.accent
+            LaunchedEffect(tintMode, tintAccent) {
                 val contentRoot = findViewById<ViewGroup>(android.R.id.content)
-                if (homeState.prefs.grayscaleMode) {
-                    val grayscalePaint = Paint().apply {
-                        colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+                when (tintMode) {
+                    com.staticum.niagaralauncher.data.ScreenTintMode.NONE -> {
+                        contentRoot.setLayerType(View.LAYER_TYPE_NONE, null)
                     }
-                    contentRoot.setLayerType(View.LAYER_TYPE_HARDWARE, grayscalePaint)
-                } else {
-                    contentRoot.setLayerType(View.LAYER_TYPE_NONE, null)
+                    com.staticum.niagaralauncher.data.ScreenTintMode.GRAYSCALE -> {
+                        val paint = Paint().apply {
+                            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+                        }
+                        contentRoot.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+                    }
+                    com.staticum.niagaralauncher.data.ScreenTintMode.COLOR -> {
+                        // Desaturate first, then scale each channel toward the accent
+                        // color's own channel weights - a cheap duotone: the picture's
+                        // luminance ends up rendered entirely in shades of that color.
+                        val grayscale = ColorMatrix().apply { setSaturation(0f) }
+                        val r = android.graphics.Color.red(tintAccent.toArgb()) / 255f
+                        val g = android.graphics.Color.green(tintAccent.toArgb()) / 255f
+                        val b = android.graphics.Color.blue(tintAccent.toArgb()) / 255f
+                        val tint = ColorMatrix(
+                            floatArrayOf(
+                                r, 0f, 0f, 0f, 0f,
+                                0f, g, 0f, 0f, 0f,
+                                0f, 0f, b, 0f, 0f,
+                                0f, 0f, 0f, 1f, 0f,
+                            ),
+                        )
+                        grayscale.postConcat(tint)
+                        val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(grayscale) }
+                        contentRoot.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+                    }
                 }
             }
         }

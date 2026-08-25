@@ -15,13 +15,19 @@ private val Context.dataStore by preferencesDataStore(name = "launcher_prefs")
 
 enum class SwipeDirection { UP, DOWN, LEFT, RIGHT }
 
+/** How the whole screen (Compose UI + native widget views) gets desaturated/tinted
+ * via [android.view.View.setLayerType] in MainActivity. NONE leaves colors as-is,
+ * GRAYSCALE is plain black & white, COLOR is a duotone tinted with the current
+ * palette's accent color. */
+enum class ScreenTintMode { NONE, GRAYSCALE, COLOR }
+
 data class LauncherPrefs(
     val paletteId: String = ColorPalette.MATTE_BLACK.id,
     val useWallpaper: Boolean = false,
     val wallpaperUri: String? = null,
     val iconSizeFactor: Float = 1.0f,
     val monochromeIcons: Boolean = false,
-    val grayscaleMode: Boolean = false,
+    val screenTintMode: ScreenTintMode = ScreenTintMode.NONE,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
     val favoriteAppKeys: List<String> = emptyList(),
@@ -37,7 +43,7 @@ class PreferencesRepository(private val context: Context) {
         val WALLPAPER_URI = stringPreferencesKey("wallpaper_uri")
         val ICON_SIZE = floatPreferencesKey("icon_size_factor")
         val MONOCHROME = booleanPreferencesKey("monochrome_icons")
-        val GRAYSCALE = booleanPreferencesKey("grayscale_mode")
+        val SCREEN_TINT_MODE = stringPreferencesKey("screen_tint_mode")
         val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
         val GESTURE_UP = stringPreferencesKey("gesture_up")
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
@@ -59,7 +65,9 @@ class PreferencesRepository(private val context: Context) {
             wallpaperUri = prefs[Keys.WALLPAPER_URI],
             iconSizeFactor = prefs[Keys.ICON_SIZE] ?: 1.0f,
             monochromeIcons = prefs[Keys.MONOCHROME] ?: false,
-            grayscaleMode = prefs[Keys.GRAYSCALE] ?: false,
+            screenTintMode = prefs[Keys.SCREEN_TINT_MODE]?.let { raw ->
+                runCatching { ScreenTintMode.valueOf(raw) }.getOrNull()
+            } ?: ScreenTintMode.NONE,
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
             favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -88,8 +96,8 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.MONOCHROME] = enabled }
     }
 
-    suspend fun setGrayscaleMode(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.GRAYSCALE] = enabled }
+    suspend fun setScreenTintMode(mode: ScreenTintMode) {
+        context.dataStore.edit { it[Keys.SCREEN_TINT_MODE] = mode.name }
     }
 
     suspend fun toggleHiddenApp(appKey: String, hidden: Boolean) {

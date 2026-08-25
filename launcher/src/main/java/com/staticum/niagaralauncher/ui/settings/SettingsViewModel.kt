@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.data.PreferencesRepository
+import com.staticum.niagaralauncher.data.ScreenTintMode
 import com.staticum.niagaralauncher.widget.WidgetEntry
 import com.staticum.niagaralauncher.widget.WidgetRepository
 import kotlinx.coroutines.flow.SharingStarted
@@ -43,8 +44,8 @@ class SettingsViewModel(
     fun setMonochromeIcons(enabled: Boolean) =
         viewModelScope.launch { preferencesRepository.setMonochromeIcons(enabled) }
 
-    fun setGrayscaleMode(enabled: Boolean) =
-        viewModelScope.launch { preferencesRepository.setGrayscaleMode(enabled) }
+    fun setScreenTintMode(mode: ScreenTintMode) =
+        viewModelScope.launch { preferencesRepository.setScreenTintMode(mode) }
 
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 

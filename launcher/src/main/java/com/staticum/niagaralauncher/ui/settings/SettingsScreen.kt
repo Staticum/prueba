@@ -2,6 +2,7 @@ package com.staticum.niagaralauncher.ui.settings
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.LauncherPrefs
+import com.staticum.niagaralauncher.data.ScreenTintMode
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.update.UpdateUiState
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
@@ -50,7 +52,7 @@ fun SettingsScreen(
     onClearWallpaper: () -> Unit,
     onIconSizeChange: (Float) -> Unit,
     onMonochromeChange: (Boolean) -> Unit,
-    onGrayscaleChange: (Boolean) -> Unit,
+    onScreenTintModeChange: (ScreenTintMode) -> Unit,
     onToggleHidden: (AppInfo, Boolean) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
@@ -135,22 +137,49 @@ fun SettingsScreen(
                 }
             }
 
-            item { SectionTitle("Escala de grises total", palette.textSecondary) }
+            item { SectionTitle("Modo de pantalla", palette.textSecondary) }
             item {
                 Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Desaturar toda la pantalla, incluidos los widgets", color = palette.textPrimary)
-                        Switch(checked = state.prefs.grayscaleMode, onCheckedChange = onGrayscaleChange)
-                    }
                     Text(
-                        text = "Distinto del tinte de íconos: esto vuelve blanco y negro todo lo que se ve, widgets incluidos",
+                        text = "Distinto del tinte de íconos: afecta toda la pantalla, widgets incluidos",
                         color = palette.textSecondary,
                         style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp),
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ScreenTintOption(
+                            label = "Ninguno",
+                            selected = state.prefs.screenTintMode == ScreenTintMode.NONE,
+                            swatchColor = palette.background,
+                            textColor = palette.textPrimary,
+                            accentColor = palette.accent,
+                            onClick = { onScreenTintModeChange(ScreenTintMode.NONE) },
+                        )
+                        ScreenTintOption(
+                            label = "Grises",
+                            selected = state.prefs.screenTintMode == ScreenTintMode.GRAYSCALE,
+                            swatchColor = androidx.compose.ui.graphics.Color.Gray,
+                            textColor = palette.textPrimary,
+                            accentColor = palette.accent,
+                            onClick = { onScreenTintModeChange(ScreenTintMode.GRAYSCALE) },
+                        )
+                        ScreenTintOption(
+                            label = "Color",
+                            selected = state.prefs.screenTintMode == ScreenTintMode.COLOR,
+                            swatchColor = palette.accent,
+                            textColor = palette.textPrimary,
+                            accentColor = palette.accent,
+                            onClick = { onScreenTintModeChange(ScreenTintMode.COLOR) },
+                        )
+                    }
+                    if (state.prefs.screenTintMode == ScreenTintMode.COLOR) {
+                        Text(
+                            text = "Usa el color de acento de la paleta elegida arriba - cambia la paleta para cambiar el tono",
+                            color = palette.textSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 }
             }
 
@@ -243,6 +272,46 @@ private fun SectionTitle(text: String, color: androidx.compose.ui.graphics.Color
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
     )
+}
+
+@Composable
+private fun ScreenTintOption(
+    label: String,
+    selected: Boolean,
+    swatchColor: androidx.compose.ui.graphics.Color,
+    textColor: androidx.compose.ui.graphics.Color,
+    accentColor: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(swatchColor)
+                .then(
+                    if (selected) {
+                        Modifier.border(2.dp, accentColor, CircleShape)
+                    } else {
+                        Modifier.border(1.dp, textColor.copy(alpha = 0.3f), CircleShape)
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = null, tint = accentColor)
+            }
+        }
+        Text(
+            text = label,
+            color = textColor,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
 }
 
 @Composable
