@@ -33,6 +33,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
+import com.staticum.niagaralauncher.ui.home.AmbientLockScreen
 import com.staticum.niagaralauncher.ui.home.HomeScreen
 import com.staticum.niagaralauncher.ui.home.HomeViewModel
 import com.staticum.niagaralauncher.ui.settings.AppPickerScreen
@@ -64,6 +65,11 @@ class MainActivity : ComponentActivity() {
     private val isDefaultLauncherState = mutableStateOf(false)
     private val screenState = mutableStateOf(Screen.HOME)
     private var widgetsSuppressed = false
+
+    // Bumped on every onStart (app brought back to foreground) so the ambient lock
+    // screen, when enabled, re-locks each time the launcher is returned to - not
+    // just on the very first launch.
+    private val lockTrigger = mutableStateOf(0)
 
     private val requestHomeRoleLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -118,6 +124,12 @@ class MainActivity : ComponentActivity() {
             val updateState by updateViewModel.state.collectAsStateWithLifecycle()
             val isDefaultLauncher by isDefaultLauncherState
             val context = LocalContext.current
+            val lockTriggerValue by lockTrigger
+
+            var isLocked by remember { mutableStateOf(false) }
+            LaunchedEffect(homeState.prefs.ambientLockEnabled, lockTriggerValue) {
+                if (homeState.prefs.ambientLockEnabled) isLocked = true
+            }
 
             LauncherTheme(palette = homeState.prefs.palette) {
                 Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
@@ -180,6 +192,9 @@ class MainActivity : ComponentActivity() {
                                 onOpenColorPicker = { screenState.value = Screen.COLOR_PICKER },
                                 onShareCrashLog = { shareCrashLog() },
                                 onClearCrashLog = { CrashLogger.clear(this@MainActivity) },
+                                isDefaultLauncher = isDefaultLauncher,
+                                onChangeDefaultLauncher = { requestDefaultLauncher() },
+                                onAmbientLockChange = settingsViewModel::setAmbientLockEnabled,
                             )
 
                             Screen.WIDGET_PICKER -> WidgetPickerScreen(
@@ -213,6 +228,13 @@ class MainActivity : ComponentActivity() {
                                     settingsViewModel.setCustomAccentColor(color.toArgb())
                                 },
                                 onBack = { screenState.value = Screen.SETTINGS },
+                            )
+                        }
+
+                        if (isLocked) {
+                            AmbientLockScreen(
+                                palette = homeState.prefs.palette,
+                                onUnlock = { isLocked = false },
                             )
                         }
                     }
@@ -269,6 +291,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         WidgetHostProvider.get(this).startListening()
+        lockTrigger.value++
     }
 
     override fun onStop() {

@@ -58,6 +58,9 @@ class SettingsViewModel(
     fun setCustomAccentColor(argb: Int) =
         viewModelScope.launch { preferencesRepository.setCustomAccentColor(argb) }
 
+    fun setAmbientLockEnabled(enabled: Boolean) =
+        viewModelScope.launch { preferencesRepository.setAmbientLockEnabled(enabled) }
+
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
     fun removeWidget(id: Int) = viewModelScope.launch { widgetRepository.removeWidgetId(id) }

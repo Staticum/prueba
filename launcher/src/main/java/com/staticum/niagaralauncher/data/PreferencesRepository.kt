@@ -35,6 +35,7 @@ data class LauncherPrefs(
     val soundVolume: Float = 0.5f,
     val indexWaveOffsetDp: Float = 24f,
     val customAccentArgb: Int? = null,
+    val ambientLockEnabled: Boolean = false,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
     val favoriteAppKeys: List<String> = emptyList(),
@@ -62,6 +63,7 @@ class PreferencesRepository(private val context: Context) {
         val SOUND_VOLUME = floatPreferencesKey("sound_volume")
         val INDEX_WAVE_OFFSET = floatPreferencesKey("index_wave_offset")
         val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
+        val AMBIENT_LOCK = booleanPreferencesKey("ambient_lock_enabled")
         val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
         val GESTURE_UP = stringPreferencesKey("gesture_up")
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
@@ -90,6 +92,7 @@ class PreferencesRepository(private val context: Context) {
             soundVolume = prefs[Keys.SOUND_VOLUME] ?: 0.5f,
             indexWaveOffsetDp = prefs[Keys.INDEX_WAVE_OFFSET] ?: 24f,
             customAccentArgb = prefs[Keys.CUSTOM_ACCENT],
+            ambientLockEnabled = prefs[Keys.AMBIENT_LOCK] ?: false,
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
             favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -139,6 +142,10 @@ class PreferencesRepository(private val context: Context) {
             it[Keys.PALETTE_ID] = ColorPalette.CUSTOM_ID
             it[Keys.CUSTOM_ACCENT] = argb
         }
+    }
+
+    suspend fun setAmbientLockEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AMBIENT_LOCK] = enabled }
     }
 
     suspend fun toggleHiddenApp(appKey: String, hidden: Boolean) {

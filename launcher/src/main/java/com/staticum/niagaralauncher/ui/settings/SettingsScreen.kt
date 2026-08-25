@@ -73,6 +73,9 @@ fun SettingsScreen(
     onOpenColorPicker: () -> Unit,
     onShareCrashLog: () -> Unit,
     onClearCrashLog: () -> Unit,
+    isDefaultLauncher: Boolean,
+    onChangeDefaultLauncher: () -> Unit,
+    onAmbientLockChange: (Boolean) -> Unit,
 ) {
     val palette = state.prefs.palette
     val context = LocalContext.current
@@ -118,6 +121,51 @@ fun SettingsScreen(
                             currentAccent = if (palette.id == ColorPalette.CUSTOM_ID) palette.accent else null,
                             onClick = onOpenColorPicker,
                         )
+                    }
+                }
+            }
+
+            item { SectionTitle("Launcher predeterminado", palette.textSecondary) }
+            item {
+                Column {
+                    Text(
+                        text = if (isDefaultLauncher) {
+                            "MinZen es tu launcher predeterminado"
+                        } else {
+                            "MinZen no es tu launcher predeterminado"
+                        },
+                        color = palette.textPrimary,
+                    )
+                    Text(
+                        text = if (isDefaultLauncher) {
+                            "Cambiar launcher predeterminado"
+                        } else {
+                            "Hacer predeterminado"
+                        },
+                        color = palette.accent,
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .clickable(onClick = onChangeDefaultLauncher),
+                    )
+                }
+            }
+
+            item { SectionTitle("Pantalla de bloqueo", palette.textSecondary) }
+            item {
+                Column {
+                    Text(
+                        text = "Muestra un reloj grande al abrir o volver a la app, antes de tus apps y widgets. No reemplaza el bloqueo real del teléfono (PIN/patrón/huella), que sigue activo aparte.",
+                        color = palette.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Activar pantalla de bloqueo ambiente", color = palette.textPrimary)
+                        Switch(checked = state.prefs.ambientLockEnabled, onCheckedChange = onAmbientLockChange)
                     }
                 }
             }
