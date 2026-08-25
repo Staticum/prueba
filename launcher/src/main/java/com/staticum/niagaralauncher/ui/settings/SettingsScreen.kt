@@ -61,6 +61,8 @@ fun SettingsScreen(
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
     onToggleFavorite: (String, Boolean) -> Unit,
+    onShareCrashLog: () -> Unit,
+    onClearCrashLog: () -> Unit,
 ) {
     val palette = state.prefs.palette
 
@@ -242,6 +244,30 @@ fun SettingsScreen(
                     onDownloadUpdate = onDownloadUpdate,
                     onInstallUpdate = onInstallUpdate,
                 )
+            }
+
+            item { SectionTitle("Diagnóstico (etapa de pruebas)", palette.textSecondary) }
+            item {
+                Column {
+                    Text(
+                        text = "Si la app se cierra sola, comparte este registro para poder revisarlo",
+                        color = palette.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(
+                            text = "Compartir registro de errores",
+                            color = palette.accent,
+                            modifier = Modifier.clickable(onClick = onShareCrashLog),
+                        )
+                        Text(
+                            text = "Borrar registro",
+                            color = palette.accent,
+                            modifier = Modifier.clickable(onClick = onClearCrashLog),
+                        )
+                    }
+                }
             }
 
             item { SectionTitle("Apps ocultas", palette.textSecondary) }

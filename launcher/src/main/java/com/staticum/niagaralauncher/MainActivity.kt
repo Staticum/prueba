@@ -40,6 +40,7 @@ import com.staticum.niagaralauncher.ui.settings.SettingsViewModel
 import com.staticum.niagaralauncher.ui.theme.LauncherTheme
 import com.staticum.niagaralauncher.update.UpdateUiState
 import com.staticum.niagaralauncher.update.UpdateViewModel
+import com.staticum.niagaralauncher.util.CrashLogger
 import com.staticum.niagaralauncher.util.ViewModelFactory
 import com.staticum.niagaralauncher.util.isDefaultLauncher
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
@@ -161,6 +162,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onToggleFavorite = settingsViewModel::toggleFavoriteApp,
+                                onShareCrashLog = { shareCrashLog() },
+                                onClearCrashLog = { CrashLogger.clear(this) },
                             )
 
                             Screen.WIDGET_PICKER -> WidgetPickerScreen(
@@ -250,6 +253,21 @@ class MainActivity : ComponentActivity() {
     private fun launchApp(app: AppInfo) {
         val factory = com.staticum.niagaralauncher.data.AppRepository(this)
         startActivity(factory.launchIntentFor(app))
+    }
+
+    private fun shareCrashLog() {
+        val file = CrashLogger.logFile(this)
+        if (!CrashLogger.hasLog(this)) {
+            android.widget.Toast.makeText(this, "No hay errores registrados", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, "Compartir registro de errores"))
     }
 
     private fun installApk(file: java.io.File) {
