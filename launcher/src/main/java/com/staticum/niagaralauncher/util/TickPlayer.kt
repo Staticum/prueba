@@ -5,8 +5,9 @@ import android.media.AudioAttributes
 import android.media.SoundPool
 import com.staticum.niagaralauncher.R
 
-/** Plays a synthesized ambient loop for scroll/index feedback, independent of the
- * system "touch sounds" setting (which only gates [android.view.View.playSoundEffect]). */
+/** Plays a synthesized oriental-flute-style melodic loop for scroll/index feedback,
+ * independent of the system "touch sounds" setting (which only gates
+ * [android.view.View.playSoundEffect]). */
 class TickPlayer(context: Context) {
 
     private val soundPool = SoundPool.Builder()
