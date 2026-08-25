@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -350,23 +351,30 @@ private fun WidgetArea(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             rows.forEach { row ->
+                // Keyed by entry.id (not just list position) so a widget keeps its
+                // Compose identity - and crucially, any in-progress drag gesture -
+                // as it moves to a new position/row grouping during reordering.
+                // Without this, Compose would tear down and recreate the composable
+                // mid-drag as soon as the first reorder step changed the row layout.
                 if (row.size == 1) {
                     val entry = row[0]
                     val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
-                    if (providerInfo == null) {
-                        OrphanedWidgetRow(entry, onRemoveInvalidWidget)
-                    } else {
-                        WidgetCell(
-                            entry = entry,
-                            providerInfo = providerInfo,
-                            fullWidthPx = fullWidthPx,
-                            isSelected = entry.id == selectedWidgetId,
-                            onSelect = { onSelectWidget(entry.id) },
-                            onResizeWidget = onResizeWidget,
-                            onResizeWidgetWidth = onResizeWidgetWidth,
-                            onMoveWidget = onMoveWidget,
-                            standalone = true,
-                        )
+                    androidx.compose.runtime.key(entry.id) {
+                        if (providerInfo == null) {
+                            OrphanedWidgetRow(entry, onRemoveInvalidWidget)
+                        } else {
+                            WidgetCell(
+                                entry = entry,
+                                providerInfo = providerInfo,
+                                fullWidthPx = fullWidthPx,
+                                isSelected = entry.id == selectedWidgetId,
+                                onSelect = { onSelectWidget(entry.id) },
+                                onResizeWidget = onResizeWidget,
+                                onResizeWidgetWidth = onResizeWidgetWidth,
+                                onMoveWidget = onMoveWidget,
+                                standalone = true,
+                            )
+                        }
                     }
                 } else {
                     Row(
@@ -375,6 +383,7 @@ private fun WidgetArea(
                     ) {
                         row.forEach { entry ->
                             val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
+                            androidx.compose.runtime.key(entry.id) {
                             if (providerInfo == null) {
                                 Box(modifier = Modifier.weight(1f)) { OrphanedWidgetRow(entry, onRemoveInvalidWidget) }
                             } else {
@@ -390,6 +399,7 @@ private fun WidgetArea(
                                     standalone = false,
                                     modifier = Modifier.weight(1f),
                                 )
+                            }
                             }
                         }
                     }
@@ -446,7 +456,7 @@ private fun WidgetCell(
     // step threshold the widget swaps one position with its neighbor and the
     // accumulator resets, so a single continuous drag can move it several spots.
     var reorderDragPx by remember(entry.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = with(density) { 56.dp.toPx() }
+    val reorderStepPx = with(density) { 36.dp.toPx() }
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -483,36 +493,43 @@ private fun WidgetCell(
                 // sees them, so dragging "the widget itself" silently did nothing.
                 // This overlay is a separate touch target drawn on top, like the
                 // resize knobs below, so it reliably receives the drag.
+                val reorderDragState = androidx.compose.foundation.gestures.rememberDraggableState { delta ->
+                    reorderDragPx += delta
+                    while (reorderDragPx > reorderStepPx) {
+                        onMoveWidget(entry.id, 1)
+                        reorderDragPx -= reorderStepPx
+                    }
+                    while (reorderDragPx < -reorderStepPx) {
+                        onMoveWidget(entry.id, -1)
+                        reorderDragPx += reorderStepPx
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .height(28.dp)
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f))
-                        .pointerInput(entry.id) {
-                            detectDragGestures(
-                                onDragStart = { reorderDragPx = 0f },
-                                onDrag = { change, offset ->
-                                    change.consume()
-                                    reorderDragPx += offset.y
-                                    while (reorderDragPx > reorderStepPx) {
-                                        onMoveWidget(entry.id, 1)
-                                        reorderDragPx -= reorderStepPx
-                                    }
-                                    while (reorderDragPx < -reorderStepPx) {
-                                        onMoveWidget(entry.id, -1)
-                                        reorderDragPx += reorderStepPx
-                                    }
-                                },
-                            )
-                        },
+                        .height(36.dp)
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
+                        .draggable(
+                            orientation = androidx.compose.foundation.gestures.Orientation.Vertical,
+                            state = reorderDragState,
+                            onDragStarted = { reorderDragPx = 0f },
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "⠿ Mover",
-                        color = androidx.compose.ui.graphics.Color.White,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Filled.DragHandle,
+                            contentDescription = null,
+                            tint = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Text(
+                            text = " Mantén y arrastra para mover",
+                            color = androidx.compose.ui.graphics.Color.White,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
 
                 Box(
