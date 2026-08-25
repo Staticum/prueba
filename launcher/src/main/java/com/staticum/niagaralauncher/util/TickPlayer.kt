@@ -34,12 +34,12 @@ class TickPlayer(context: Context) {
         if (isLoaded) soundPool.play(soundId, 0.3f, 0.3f, 0, 0, 1f)
     }
 
-    /** Loops the ambient sample continuously (loop = -1) and seamlessly (the sample
-     * itself is crossfaded end-to-start) instead of restarting a short clip from zero
-     * on every index change, so scrolling reads as one continuous relaxing tone. */
+    /** Loops the melody continuously (loop = -1) and seamlessly (the sample itself is
+     * crossfaded end-to-start) instead of restarting a short clip from zero on every
+     * index change, so scrolling reads as one continuous flute phrase. */
     fun startLoop() {
         if (isLoaded && loopStreamId == null) {
-            loopStreamId = soundPool.play(soundId, 0.35f, 0.35f, 0, -1, 1f)
+            loopStreamId = soundPool.play(soundId, 0.3f, 0.3f, 0, -1, 1f)
         }
     }
 
