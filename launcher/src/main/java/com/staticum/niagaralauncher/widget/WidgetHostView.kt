@@ -29,7 +29,13 @@ fun ComposeAppWidgetHost(
             }
         },
         update = { view: AppWidgetHostView ->
-            view.setAppWidget(appWidgetId, providerInfo)
+            // Re-binding an already-bound widget on every unrelated recomposition
+            // (e.g. adding/resizing a different widget nearby) has been seen to upset
+            // some third-party widgets (media-session widgets in particular) badly
+            // enough to crash the whole host app - only rebind when it actually changed.
+            if (view.appWidgetId != appWidgetId) {
+                view.setAppWidget(appWidgetId, providerInfo)
+            }
         },
     )
 }
