@@ -48,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -653,12 +652,7 @@ private fun AlphabetIndexBar(
                     letter in availableLetters -> textColor
                     else -> textColor.copy(alpha = 0.25f)
                 },
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = -(scale - 1f) * 10f
-                },
+                fontSize = MaterialTheme.typography.labelSmall.fontSize * scale,
             )
         }
     }
