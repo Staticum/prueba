@@ -21,6 +21,7 @@ data class LauncherPrefs(
     val wallpaperUri: String? = null,
     val iconSizeFactor: Float = 1.0f,
     val monochromeIcons: Boolean = false,
+    val grayscaleMode: Boolean = false,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
     val favoriteAppKeys: List<String> = emptyList(),
@@ -36,6 +37,7 @@ class PreferencesRepository(private val context: Context) {
         val WALLPAPER_URI = stringPreferencesKey("wallpaper_uri")
         val ICON_SIZE = floatPreferencesKey("icon_size_factor")
         val MONOCHROME = booleanPreferencesKey("monochrome_icons")
+        val GRAYSCALE = booleanPreferencesKey("grayscale_mode")
         val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
         val GESTURE_UP = stringPreferencesKey("gesture_up")
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
@@ -57,6 +59,7 @@ class PreferencesRepository(private val context: Context) {
             wallpaperUri = prefs[Keys.WALLPAPER_URI],
             iconSizeFactor = prefs[Keys.ICON_SIZE] ?: 1.0f,
             monochromeIcons = prefs[Keys.MONOCHROME] ?: false,
+            grayscaleMode = prefs[Keys.GRAYSCALE] ?: false,
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
             favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -83,6 +86,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setMonochromeIcons(enabled: Boolean) {
         context.dataStore.edit { it[Keys.MONOCHROME] = enabled }
+    }
+
+    suspend fun setGrayscaleMode(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.GRAYSCALE] = enabled }
     }
 
     suspend fun toggleHiddenApp(appKey: String, hidden: Boolean) {

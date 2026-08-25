@@ -78,6 +78,7 @@ fun HomeScreen(
     onSwipe: (SwipeDirection) -> Unit,
     onSetAsDefaultLauncher: () -> Unit,
     onResizeWidget: (Int, Int) -> Unit,
+    onResizeWidgetWidth: (Int, Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
 ) {
     val palette = state.prefs.palette
@@ -166,6 +167,7 @@ fun HomeScreen(
                 WidgetArea(
                     widgets = widgets,
                     onResizeWidget = onResizeWidget,
+                    onResizeWidgetWidth = onResizeWidgetWidth,
                     onRemoveInvalidWidget = onRemoveInvalidWidget,
                 )
             }
@@ -263,11 +265,14 @@ fun HomeScreen(
 
 private const val MIN_WIDGET_HEIGHT_DP = 60
 private const val MAX_WIDGET_HEIGHT_DP = 400
+private const val MIN_WIDGET_WIDTH_PERCENT = 50
+private const val MAX_WIDGET_WIDTH_PERCENT = 100
 
 @Composable
 private fun WidgetArea(
     widgets: List<WidgetEntry>,
     onResizeWidget: (Int, Int) -> Unit,
+    onResizeWidgetWidth: (Int, Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -299,17 +304,64 @@ private fun WidgetArea(
                 val minHeightDp = providerInfo.minHeight.coerceAtLeast(MIN_WIDGET_HEIGHT_DP)
                 val heightDp = (entry.heightDp ?: minHeightDp)
                     .coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
+                val widthPercent = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
+                    .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
 
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    ComposeAppWidgetHost(
-                        appWidgetId = entry.id,
-                        providerInfo = providerInfo,
-                        modifier = Modifier.fillMaxWidth().height(heightDp.dp),
-                    )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val fullWidthPx = with(density) { maxWidth.toPx() }
+                        var dragWidthPx by remember(entry.id) {
+                            mutableFloatStateOf(fullWidthPx * widthPercent / 100f)
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            ComposeAppWidgetHost(
+                                appWidgetId = entry.id,
+                                providerInfo = providerInfo,
+                                modifier = Modifier.fillMaxWidth(widthPercent / 100f).height(heightDp.dp),
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight()
+                                .width(24.dp)
+                                .pointerInput(entry.id, fullWidthPx) {
+                                    detectDragGestures(
+                                        onDragStart = { dragWidthPx = fullWidthPx * widthPercent / 100f },
+                                        onDrag = { change, offset ->
+                                            change.consume()
+                                            dragWidthPx += offset.x * 2
+                                            val newWidthPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
+                                                .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
+                                            onResizeWidgetWidth(entry.id, newWidthPercent)
+                                        },
+                                    )
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(32.dp)
+                                    .background(
+                                        androidx.compose.ui.graphics.Color.White.copy(alpha = 0.25f),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp),
+                                    ),
+                            )
+                        }
+                    }
                     var dragHeightPx by remember(entry.id) { mutableFloatStateOf(with(density) { heightDp.dp.toPx() }) }
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxWidth(widthPercent / 100f)
                             .height(14.dp)
                             .pointerInput(entry.id) {
                                 detectDragGestures(

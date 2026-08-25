@@ -50,6 +50,7 @@ fun SettingsScreen(
     onClearWallpaper: () -> Unit,
     onIconSizeChange: (Float) -> Unit,
     onMonochromeChange: (Boolean) -> Unit,
+    onGrayscaleChange: (Boolean) -> Unit,
     onToggleHidden: (AppInfo, Boolean) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
@@ -131,6 +132,25 @@ fun SettingsScreen(
                 ) {
                     Text("Aplicar tinte de acento a los iconos", color = palette.textPrimary)
                     Switch(checked = state.prefs.monochromeIcons, onCheckedChange = onMonochromeChange)
+                }
+            }
+
+            item { SectionTitle("Escala de grises total", palette.textSecondary) }
+            item {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Desaturar toda la pantalla, incluidos los widgets", color = palette.textPrimary)
+                        Switch(checked = state.prefs.grayscaleMode, onCheckedChange = onGrayscaleChange)
+                    }
+                    Text(
+                        text = "Distinto del tinte de íconos: esto vuelve blanco y negro todo lo que se ve, widgets incluidos",
+                        color = palette.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
 

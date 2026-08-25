@@ -11,19 +11,21 @@ import kotlinx.coroutines.flow.map
 
 private val Context.widgetDataStore by preferencesDataStore(name = "launcher_widgets")
 
-data class WidgetEntry(val id: Int, val heightDp: Int?)
+data class WidgetEntry(val id: Int, val heightDp: Int?, val widthPercent: Int?)
 
 /** Persists which app-widget ids the user has placed on the home screen, in the
- * order the user arranged them, plus an optional custom height per widget. */
+ * order the user arranged them, plus an optional custom height and width per widget. */
 class WidgetRepository(private val context: Context) {
 
     private val orderKey = stringPreferencesKey("widget_order")
     private val heightsKey = stringPreferencesKey("widget_heights")
+    private val widthsKey = stringPreferencesKey("widget_widths")
 
     val widgetsFlow: Flow<List<WidgetEntry>> = context.widgetDataStore.data.map { prefs ->
         val order = parseOrder(prefs[orderKey])
         val heights = parseHeights(prefs[heightsKey])
-        order.map { id -> WidgetEntry(id, heights[id]) }
+        val widths = parseHeights(prefs[widthsKey])
+        order.map { id -> WidgetEntry(id, heights[id], widths[id]) }
     }
 
     val widgetIdsFlow: Flow<List<Int>> = widgetsFlow.map { list -> list.map { it.id } }
@@ -41,6 +43,8 @@ class WidgetRepository(private val context: Context) {
             prefs[orderKey] = (order - id).joinToString(",")
             val heights = parseHeights(prefs[heightsKey]) - id
             prefs[heightsKey] = heights.entries.joinToString(",") { "${it.key}:${it.value}" }
+            val widths = parseHeights(prefs[widthsKey]) - id
+            prefs[widthsKey] = widths.entries.joinToString(",") { "${it.key}:${it.value}" }
         }
     }
 
@@ -61,6 +65,13 @@ class WidgetRepository(private val context: Context) {
         context.widgetDataStore.edit { prefs ->
             val heights = parseHeights(prefs[heightsKey]) + (id to heightDp)
             prefs[heightsKey] = heights.entries.joinToString(",") { "${it.key}:${it.value}" }
+        }
+    }
+
+    suspend fun setWidgetWidth(id: Int, widthPercent: Int) {
+        context.widgetDataStore.edit { prefs ->
+            val widths = parseHeights(prefs[widthsKey]) + (id to widthPercent)
+            prefs[widthsKey] = widths.entries.joinToString(",") { "${it.key}:${it.value}" }
         }
     }
 

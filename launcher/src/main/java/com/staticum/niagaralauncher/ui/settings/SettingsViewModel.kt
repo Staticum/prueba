@@ -43,6 +43,9 @@ class SettingsViewModel(
     fun setMonochromeIcons(enabled: Boolean) =
         viewModelScope.launch { preferencesRepository.setMonochromeIcons(enabled) }
 
+    fun setGrayscaleMode(enabled: Boolean) =
+        viewModelScope.launch { preferencesRepository.setGrayscaleMode(enabled) }
+
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
     fun removeWidget(id: Int) = viewModelScope.launch { widgetRepository.removeWidgetId(id) }
@@ -51,6 +54,9 @@ class SettingsViewModel(
 
     fun setWidgetHeight(id: Int, heightDp: Int) =
         viewModelScope.launch { widgetRepository.setWidgetHeight(id, heightDp) }
+
+    fun setWidgetWidth(id: Int, widthPercent: Int) =
+        viewModelScope.launch { widgetRepository.setWidgetWidth(id, widthPercent) }
 
     fun toggleFavoriteApp(appKey: String, favorite: Boolean) =
         viewModelScope.launch { preferencesRepository.toggleFavoriteApp(appKey, favorite) }

@@ -6,10 +6,15 @@ import android.app.role.RoleManager
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -118,6 +123,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSetAsDefaultLauncher = { requestDefaultLauncher() },
                                 onResizeWidget = settingsViewModel::setWidgetHeight,
+                                onResizeWidgetWidth = settingsViewModel::setWidgetWidth,
                                 onRemoveInvalidWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
                                     settingsViewModel.removeWidget(id)
@@ -134,6 +140,7 @@ class MainActivity : ComponentActivity() {
                                 onClearWallpaper = { settingsViewModel.setUseWallpaper(false) },
                                 onIconSizeChange = settingsViewModel::setIconSizeFactor,
                                 onMonochromeChange = settingsViewModel::setMonochromeIcons,
+                                onGrayscaleChange = settingsViewModel::setGrayscaleMode,
                                 onToggleHidden = { app, hidden -> homeViewModel.toggleHidden(app, hidden) },
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
@@ -162,6 +169,21 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
+            }
+
+            // Grayscale mode desaturates the whole screen as a single rendered layer,
+            // including native widget Views embedded via AndroidView, which a Compose
+            // ColorFilter can't reach since they aren't Compose draw calls.
+            LaunchedEffect(homeState.prefs.grayscaleMode) {
+                val contentRoot = findViewById<ViewGroup>(android.R.id.content)
+                if (homeState.prefs.grayscaleMode) {
+                    val grayscalePaint = Paint().apply {
+                        colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+                    }
+                    contentRoot.setLayerType(View.LAYER_TYPE_HARDWARE, grayscalePaint)
+                } else {
+                    contentRoot.setLayerType(View.LAYER_TYPE_NONE, null)
                 }
             }
         }
