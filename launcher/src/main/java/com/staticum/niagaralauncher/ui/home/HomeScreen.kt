@@ -78,6 +78,7 @@ fun HomeScreen(
     onSwipe: (SwipeDirection) -> Unit,
     onSetAsDefaultLauncher: () -> Unit,
     onResizeWidget: (Int, Int) -> Unit,
+    onRemoveInvalidWidget: (Int) -> Unit,
 ) {
     val palette = state.prefs.palette
     val backgroundColor = if (state.prefs.useWallpaper) {
@@ -147,6 +148,8 @@ fun HomeScreen(
                 }
             }
 
+            ZenQuoteBanner(textColor = palette.textSecondary)
+
             if (!isDefaultLauncher) {
                 Text(
                     text = "No eres el launcher predeterminado · Configurar",
@@ -160,7 +163,11 @@ fun HomeScreen(
             }
 
             if (widgets.isNotEmpty()) {
-                WidgetArea(widgets = widgets, onResizeWidget = onResizeWidget)
+                WidgetArea(
+                    widgets = widgets,
+                    onResizeWidget = onResizeWidget,
+                    onRemoveInvalidWidget = onRemoveInvalidWidget,
+                )
             }
 
             val favoriteApps = remember(state.allApps, state.prefs.favoriteAppKeys) {
@@ -261,6 +268,7 @@ private const val MAX_WIDGET_HEIGHT_DP = 400
 private fun WidgetArea(
     widgets: List<WidgetEntry>,
     onResizeWidget: (Int, Int) -> Unit,
+    onRemoveInvalidWidget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -274,8 +282,20 @@ private fun WidgetArea(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         widgets.forEach { entry ->
+            // getAppWidgetInfo returns null when the provider's app was uninstalled or
+            // reinstalled with a different id — the widget id is now permanently orphaned.
             val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
-            if (providerInfo != null) {
+            if (providerInfo == null) {
+                Text(
+                    text = "Widget no disponible · Toca para quitar",
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onRemoveInvalidWidget(entry.id) }
+                        .padding(vertical = 10.dp),
+                )
+            } else {
                 val minHeightDp = providerInfo.minHeight.coerceAtLeast(MIN_WIDGET_HEIGHT_DP)
                 val heightDp = (entry.heightDp ?: minHeightDp)
                     .coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
@@ -318,6 +338,31 @@ private fun WidgetArea(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ZenQuoteBanner(textColor: androidx.compose.ui.graphics.Color) {
+    val quote = remember { ZenQuotes.random() }
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(600)) +
+            androidx.compose.animation.slideInVertically(
+                animationSpec = tween(600),
+                initialOffsetY = { -it / 3 },
+            ),
+    ) {
+        Text(
+            text = quote,
+            color = textColor,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 10.dp),
+        )
     }
 }
 

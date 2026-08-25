@@ -29,7 +29,7 @@ class TickPlayer(context: Context) {
     }
 
     fun play() {
-        if (isLoaded) soundPool.play(soundId, 0.5f, 0.5f, 0, 0, 1f)
+        if (isLoaded) soundPool.play(soundId, 0.3f, 0.3f, 0, 0, 1f)
     }
 
     fun release() {

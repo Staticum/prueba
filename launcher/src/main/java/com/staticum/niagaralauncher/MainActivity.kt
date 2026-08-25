@@ -118,6 +118,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSetAsDefaultLauncher = { requestDefaultLauncher() },
                                 onResizeWidget = settingsViewModel::setWidgetHeight,
+                                onRemoveInvalidWidget = { id ->
+                                    WidgetHostProvider.get(context).deleteAppWidgetId(id)
+                                    settingsViewModel.removeWidget(id)
+                                },
                             )
 
                             Screen.SETTINGS -> SettingsScreen(
@@ -160,11 +164,21 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-
-            LaunchedEffect(Unit) {
-                WidgetHostProvider.get(context).startListening()
-            }
         }
+    }
+
+    /** AppWidgetHost must listen only while the Activity is actually shown, per its
+     * documented contract — otherwise widget updates (e.g. Spotify's now-playing state)
+     * can silently stop propagating to the host views after the app has been backgrounded
+     * and resumed a few times, which is what made widgets appear to "break". */
+    override fun onStart() {
+        super.onStart()
+        WidgetHostProvider.get(this).startListening()
+    }
+
+    override fun onStop() {
+        WidgetHostProvider.get(this).stopListening()
+        super.onStop()
     }
 
     override fun onResume() {
