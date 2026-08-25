@@ -331,7 +331,7 @@ private fun WidgetArea(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
-                                .fillMaxHeight()
+                                .height(heightDp.dp)
                                 .width(24.dp)
                                 .pointerInput(entry.id, fullWidthPx) {
                                     detectDragGestures(
