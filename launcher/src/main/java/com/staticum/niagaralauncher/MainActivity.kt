@@ -193,7 +193,18 @@ class MainActivity : ComponentActivity() {
                                 onShareCrashLog = { shareCrashLog() },
                                 onClearCrashLog = { CrashLogger.clear(this@MainActivity) },
                                 isDefaultLauncher = isDefaultLauncher,
-                                onChangeDefaultLauncher = { requestDefaultLauncher() },
+                                onChangeDefaultLauncher = {
+                                    // Requesting the ROLE_HOME role when it's already held
+                                    // just auto-resolves with no UI, which read as the
+                                    // button "doing nothing" - to switch AWAY from being
+                                    // default, the system's own Default apps > Home screen
+                                    // picker is the only way, so go straight there instead.
+                                    if (isDefaultLauncher) {
+                                        startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+                                    } else {
+                                        requestDefaultLauncher()
+                                    }
+                                },
                                 onAmbientLockChange = settingsViewModel::setAmbientLockEnabled,
                             )
 
