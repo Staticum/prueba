@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -250,11 +251,12 @@ fun HomeScreen(
                     onLetterActive = { letter ->
                         activeIndexLetter = letter?.let { nearestAvailableLetter(it, availableLetters) }
                     },
+                    waveOffsetDp = state.prefs.indexWaveOffsetDp,
                     accentColor = palette.accent,
                     textColor = palette.textSecondary,
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(48.dp),
+                        .width(28.dp),
                 )
             }
         }
@@ -566,6 +568,7 @@ private fun AlphabetIndexBar(
     availableLetters: Set<Char>,
     activeLetter: Char?,
     onLetterActive: (Char?) -> Unit,
+    waveOffsetDp: Float,
     accentColor: androidx.compose.ui.graphics.Color,
     textColor: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
@@ -637,7 +640,9 @@ private fun AlphabetIndexBar(
                 },
                 fontSize = MaterialTheme.typography.labelSmall.fontSize * scale,
                 fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else null,
-                modifier = Modifier.padding(end = if (isActive) 4.dp else 0.dp),
+                modifier = Modifier
+                    .padding(end = if (isActive) 4.dp else 0.dp)
+                    .offset(x = -(scale - 1f) * waveOffsetDp.dp),
             )
         }
     }

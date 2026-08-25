@@ -52,6 +52,9 @@ class SettingsViewModel(
     fun setSoundVolume(volume: Float) =
         viewModelScope.launch { preferencesRepository.setSoundVolume(volume) }
 
+    fun setIndexWaveOffset(offsetDp: Float) =
+        viewModelScope.launch { preferencesRepository.setIndexWaveOffset(offsetDp) }
+
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
     fun removeWidget(id: Int) = viewModelScope.launch { widgetRepository.removeWidgetId(id) }

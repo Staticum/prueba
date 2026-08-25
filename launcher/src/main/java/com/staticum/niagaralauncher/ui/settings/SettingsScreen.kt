@@ -38,8 +38,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.data.ScreenTintMode
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
@@ -51,7 +51,6 @@ import com.staticum.niagaralauncher.widget.WidgetHostProvider
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
-    allApps: List<AppInfo>,
     updateState: UpdateUiState,
     onBack: () -> Unit,
     onPaletteSelected: (ColorPalette) -> Unit,
@@ -62,14 +61,15 @@ fun SettingsScreen(
     onScreenTintModeChange: (ScreenTintMode) -> Unit,
     onSoundSelected: (String) -> Unit,
     onSoundVolumeChange: (Float) -> Unit,
-    onToggleHidden: (AppInfo, Boolean) -> Unit,
+    onIndexWaveOffsetChange: (Float) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
     onMoveWidget: (Int, Int) -> Unit,
     onCheckForUpdate: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
-    onToggleFavorite: (String, Boolean) -> Unit,
+    onOpenFavoritesPicker: () -> Unit,
+    onOpenHiddenPicker: () -> Unit,
     onShareCrashLog: () -> Unit,
     onClearCrashLog: () -> Unit,
 ) {
@@ -101,7 +101,7 @@ fun SettingsScreen(
         }
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            item { SectionTitle("Paleta de colores", palette.textSecondary) }
+            item { SectionTitle("Paleta de colores", palette.textSecondary, first = true) }
             item {
                 LazyRow {
                     items(ColorPalette.entries) { p ->
@@ -184,6 +184,17 @@ fun SettingsScreen(
                         value = state.prefs.soundVolume,
                         onValueChange = onSoundVolumeChange,
                         valueRange = 0f..1f,
+                    )
+                    Text(
+                        text = "Alcance de la ola hacia la izquierda",
+                        color = palette.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                    Slider(
+                        value = state.prefs.indexWaveOffsetDp,
+                        onValueChange = onIndexWaveOffsetChange,
+                        valueRange = 0f..64f,
                     )
                 }
             }
@@ -271,27 +282,14 @@ fun SettingsScreen(
 
             item { SectionTitle("Apps favoritas", palette.textSecondary) }
             item {
-                Text(
-                    text = "Aparecen siempre visibles debajo de los widgets, sin buscarlas",
-                    color = palette.textSecondary,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp),
+                PickerSummaryRow(
+                    description = "Aparecen siempre visibles debajo de los widgets, sin buscarlas",
+                    countLabel = "${state.prefs.favoriteAppKeys.size} elegidas",
+                    textColor = palette.textPrimary,
+                    secondaryColor = palette.textSecondary,
+                    accentColor = palette.accent,
+                    onClick = onOpenFavoritesPicker,
                 )
-            }
-            items(allApps, key = { "fav_${it.key}" }) { app ->
-                val favorite = app.key in state.prefs.favoriteAppKeys
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(app.label, color = if (favorite) palette.textPrimary else palette.textSecondary)
-                    Text(
-                        text = if (favorite) "Quitar" else "Agregar",
-                        color = palette.accent,
-                        modifier = Modifier.clickable { onToggleFavorite(app.key, !favorite) },
-                    )
-                }
             }
 
             item { SectionTitle("Actualizaciones", palette.textSecondary) }
@@ -332,33 +330,72 @@ fun SettingsScreen(
             }
 
             item { SectionTitle("Apps ocultas", palette.textSecondary) }
-            items(allApps, key = { it.key }) { app ->
-                val hidden = app.key in state.prefs.hiddenApps
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(app.label, color = if (hidden) palette.textSecondary else palette.textPrimary)
-                    Text(
-                        text = if (hidden) "Mostrar" else "Ocultar",
-                        color = palette.accent,
-                        modifier = Modifier.clickable { onToggleHidden(app, !hidden) },
-                    )
-                }
+            item {
+                PickerSummaryRow(
+                    description = "No aparecen en la lista principal ni en la búsqueda",
+                    countLabel = "${state.prefs.hiddenApps.size} ocultas",
+                    textColor = palette.textPrimary,
+                    secondaryColor = palette.textSecondary,
+                    accentColor = palette.accent,
+                    onClick = onOpenHiddenPicker,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SectionTitle(text: String, color: androidx.compose.ui.graphics.Color) {
-    Text(
-        text = text,
-        color = color,
-        style = MaterialTheme.typography.labelLarge,
-        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
-    )
+private fun SectionTitle(
+    text: String,
+    color: androidx.compose.ui.graphics.Color,
+    first: Boolean = false,
+) {
+    Column {
+        if (!first) {
+            androidx.compose.material3.HorizontalDivider(
+                color = color.copy(alpha = 0.15f),
+                modifier = Modifier.padding(top = 20.dp),
+            )
+        }
+        Text(
+            text = text.uppercase(),
+            color = color,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(top = if (first) 4.dp else 16.dp, bottom = 10.dp),
+        )
+    }
+}
+
+@Composable
+private fun PickerSummaryRow(
+    description: String,
+    countLabel: String,
+    textColor: androidx.compose.ui.graphics.Color,
+    secondaryColor: androidx.compose.ui.graphics.Color,
+    accentColor: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+) {
+    Column {
+        Text(
+            text = description,
+            color = secondaryColor,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(countLabel, color = textColor)
+            Text("Elegir", color = accentColor)
+        }
+    }
 }
 
 @Composable
