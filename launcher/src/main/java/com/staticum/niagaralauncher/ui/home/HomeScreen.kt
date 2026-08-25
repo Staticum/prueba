@@ -77,6 +77,7 @@ fun HomeScreen(
     onSetAsDefaultLauncher: () -> Unit,
     onResizeWidget: (Int, Int) -> Unit,
     onResizeWidgetWidth: (Int, Int) -> Unit,
+    onMoveWidget: (Int, Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
 ) {
     val palette = state.prefs.palette
@@ -216,6 +217,7 @@ fun HomeScreen(
                     onSelectWidget = { selectedWidgetId = it },
                     onResizeWidget = onResizeWidget,
                     onResizeWidgetWidth = onResizeWidgetWidth,
+                    onMoveWidget = onMoveWidget,
                     onRemoveInvalidWidget = onRemoveInvalidWidget,
                 )
             }
@@ -285,11 +287,18 @@ fun HomeScreen(
 
 private const val MIN_WIDGET_HEIGHT_DP = 60
 private const val MAX_WIDGET_HEIGHT_DP = 400
-private const val MIN_WIDGET_WIDTH_PERCENT = 50
+private const val MIN_WIDGET_WIDTH_PERCENT = 25
 private const val MAX_WIDGET_WIDTH_PERCENT = 100
-/** A widget at or below this width is considered "half", and eligible to share a
- * row with the next half-width widget instead of always taking the full row. */
-private const val PAIRABLE_WIDTH_PERCENT = 50
+/** Snap points for widget width, so widgets combine cleanly into rows of 2, 3 or 4
+ * (25/33/50/66/75/100) instead of any arbitrary drag position. */
+private val WIDTH_STEPS = listOf(25, 33, 50, 66, 75, 100)
+/** A row accepts more widgets while their combined width stays within this budget
+ * (some slack over 100 absorbs rounding, e.g. three 33% widgets = 99). */
+private const val ROW_WIDTH_BUDGET_PERCENT = 101
+private const val MAX_WIDGETS_PER_ROW = 4
+
+private fun snapWidthPercent(raw: Int): Int =
+    WIDTH_STEPS.minByOrNull { kotlin.math.abs(it - raw) } ?: MAX_WIDGET_WIDTH_PERCENT
 
 @Composable
 private fun WidgetArea(
@@ -298,31 +307,35 @@ private fun WidgetArea(
     onSelectWidget: (Int?) -> Unit,
     onResizeWidget: (Int, Int) -> Unit,
     onResizeWidgetWidth: (Int, Int) -> Unit,
+    onMoveWidget: (Int, Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val manager = remember(context) { AppWidgetManager.getInstance(context) }
 
-    // Pack widgets into rows: two consecutive "half" widgets (<=50%) share a row,
-    // everything else gets its own full-width row - a simple, order-preserving grid
-    // that the user configures just by dragging a selected widget's frame handles.
+    // Pack widgets into rows greedily: keep adding the next widget to the current
+    // row while it still fits under the width budget and the row isn't full yet -
+    // this lets 2, 3 or 4 narrower widgets share a row in any combination, not just
+    // fixed pairs, while still being a simple order-preserving stack of rows that
+    // the user configures just by dragging a selected widget's frame handles.
     val rows = remember(widgets) {
         val result = mutableListOf<List<WidgetEntry>>()
-        var i = 0
-        while (i < widgets.size) {
-            val entry = widgets[i]
-            val isHalf = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT) <= PAIRABLE_WIDTH_PERCENT
-            val next = widgets.getOrNull(i + 1)
-            val nextIsHalf = next != null && (next.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT) <= PAIRABLE_WIDTH_PERCENT
-            if (isHalf && nextIsHalf) {
-                result += listOf(entry, next!!)
-                i += 2
+        var row = mutableListOf<WidgetEntry>()
+        var rowWidth = 0
+        for (entry in widgets) {
+            val width = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT).coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
+            val fitsRow = row.isNotEmpty() && row.size < MAX_WIDGETS_PER_ROW && rowWidth + width <= ROW_WIDTH_BUDGET_PERCENT
+            if (fitsRow) {
+                row.add(entry)
+                rowWidth += width
             } else {
-                result += listOf(entry)
-                i += 1
+                if (row.isNotEmpty()) result += row
+                row = mutableListOf(entry)
+                rowWidth = width
             }
         }
+        if (row.isNotEmpty()) result += row
         result
     }
 
@@ -351,6 +364,7 @@ private fun WidgetArea(
                             onSelect = { onSelectWidget(entry.id) },
                             onResizeWidget = onResizeWidget,
                             onResizeWidgetWidth = onResizeWidgetWidth,
+                            onMoveWidget = onMoveWidget,
                             standalone = true,
                         )
                     }
@@ -372,6 +386,7 @@ private fun WidgetArea(
                                     onSelect = { onSelectWidget(entry.id) },
                                     onResizeWidget = onResizeWidget,
                                     onResizeWidgetWidth = onResizeWidgetWidth,
+                                    onMoveWidget = onMoveWidget,
                                     standalone = false,
                                     modifier = Modifier.weight(1f),
                                 )
@@ -401,8 +416,9 @@ private fun OrphanedWidgetRow(entry: WidgetEntry, onRemoveInvalidWidget: (Int) -
  * small drag knobs (right edge = width, bottom edge = height) so the size can be
  * set in place, then disappears again on deselect - no permanent bars around widgets.
  * The width knob always measures against the full screen width ([fullWidthPx]),
- * not the widget's own (possibly halved) slot, so dragging a paired widget past 50%
- * correctly un-pairs it back to its own row on the next recomposition. */
+ * not the widget's own (possibly narrowed) slot, and snaps to [WIDTH_STEPS] so
+ * widgets combine cleanly into rows of 2-4. Once selected, dragging the widget's
+ * body itself (not the knobs) up/down reorders it among the other widgets. */
 @Composable
 private fun WidgetCell(
     entry: WidgetEntry,
@@ -412,6 +428,7 @@ private fun WidgetCell(
     onSelect: () -> Unit,
     onResizeWidget: (Int, Int) -> Unit,
     onResizeWidgetWidth: (Int, Int) -> Unit,
+    onMoveWidget: (Int, Int) -> Unit,
     standalone: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -423,6 +440,11 @@ private fun WidgetCell(
 
     var dragWidthPx by remember(entry.id) { mutableFloatStateOf(fullWidthPx * widthPercent / 100f) }
     var dragHeightPx by remember(entry.id) { mutableFloatStateOf(with(density) { heightDp.dp.toPx() }) }
+    // Accumulates vertical drag distance while reordering; every time it crosses the
+    // step threshold the widget swaps one position with its neighbor and the
+    // accumulator resets, so a single continuous drag can move it several spots.
+    var reorderDragPx by remember(entry.id) { mutableFloatStateOf(0f) }
+    val reorderStepPx = with(density) { 56.dp.toPx() }
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -444,7 +466,32 @@ private fun WidgetCell(
                 )
                 .pointerInput(entry.id) {
                     detectTapGestures(onLongPress = { onSelect() })
-                },
+                }
+                .then(
+                    // Only active once selected, so a normal tap/long-press to select
+                    // isn't swallowed by the reorder gesture on unselected widgets.
+                    if (isSelected) {
+                        Modifier.pointerInput(entry.id) {
+                            detectDragGestures(
+                                onDragStart = { reorderDragPx = 0f },
+                                onDrag = { change, offset ->
+                                    change.consume()
+                                    reorderDragPx += offset.y
+                                    while (reorderDragPx > reorderStepPx) {
+                                        onMoveWidget(entry.id, 1)
+                                        reorderDragPx -= reorderStepPx
+                                    }
+                                    while (reorderDragPx < -reorderStepPx) {
+                                        onMoveWidget(entry.id, -1)
+                                        reorderDragPx += reorderStepPx
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             ComposeAppWidgetHost(
                 appWidgetId = entry.id,
@@ -464,9 +511,9 @@ private fun WidgetCell(
                                 onDrag = { change, offset ->
                                     change.consume()
                                     dragWidthPx += offset.x * 2
-                                    val newWidthPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
+                                    val rawPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
                                         .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
-                                    onResizeWidgetWidth(entry.id, newWidthPercent)
+                                    onResizeWidgetWidth(entry.id, snapWidthPercent(rawPercent))
                                 },
                             )
                         },

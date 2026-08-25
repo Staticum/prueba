@@ -138,6 +138,7 @@ class MainActivity : ComponentActivity() {
                                 onSetAsDefaultLauncher = { requestDefaultLauncher() },
                                 onResizeWidget = settingsViewModel::setWidgetHeight,
                                 onResizeWidgetWidth = settingsViewModel::setWidgetWidth,
+                                onMoveWidget = settingsViewModel::moveWidget,
                                 onRemoveInvalidWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
                                     settingsViewModel.removeWidget(id)
