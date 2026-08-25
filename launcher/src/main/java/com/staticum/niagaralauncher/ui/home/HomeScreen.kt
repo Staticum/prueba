@@ -417,8 +417,10 @@ private fun OrphanedWidgetRow(entry: WidgetEntry, onRemoveInvalidWidget: (Int) -
  * set in place, then disappears again on deselect - no permanent bars around widgets.
  * The width knob always measures against the full screen width ([fullWidthPx]),
  * not the widget's own (possibly narrowed) slot, and snaps to [WIDTH_STEPS] so
- * widgets combine cleanly into rows of 2-4. Once selected, dragging the widget's
- * body itself (not the knobs) up/down reorders it among the other widgets. */
+ * widgets combine cleanly into rows of 2-4. Once selected, a "Mover" grip strip
+ * appears across the top - drag it up/down to reorder the widget. It's a separate
+ * touch target from the widget's own body since some widgets (a digital clock
+ * included) are themselves interactive and would otherwise swallow the drag. */
 @Composable
 private fun WidgetCell(
     entry: WidgetEntry,
@@ -466,12 +468,28 @@ private fun WidgetCell(
                 )
                 .pointerInput(entry.id) {
                     detectTapGestures(onLongPress = { onSelect() })
-                }
-                .then(
-                    // Only active once selected, so a normal tap/long-press to select
-                    // isn't swallowed by the reorder gesture on unselected widgets.
-                    if (isSelected) {
-                        Modifier.pointerInput(entry.id) {
+                },
+        ) {
+            ComposeAppWidgetHost(
+                appWidgetId = entry.id,
+                providerInfo = providerInfo,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            if (isSelected) {
+                // A dedicated grip strip, not a gesture over the widget's own body:
+                // many widgets (a digital clock included) are themselves interactive
+                // and swallow touches before Compose's own gesture detection ever
+                // sees them, so dragging "the widget itself" silently did nothing.
+                // This overlay is a separate touch target drawn on top, like the
+                // resize knobs below, so it reliably receives the drag.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f))
+                        .pointerInput(entry.id) {
                             detectDragGestures(
                                 onDragStart = { reorderDragPx = 0f },
                                 onDrag = { change, offset ->
@@ -487,19 +505,16 @@ private fun WidgetCell(
                                     }
                                 },
                             )
-                        }
-                    } else {
-                        Modifier
-                    },
-                ),
-        ) {
-            ComposeAppWidgetHost(
-                appWidgetId = entry.id,
-                providerInfo = providerInfo,
-                modifier = Modifier.fillMaxSize(),
-            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "⠿ Mover",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
 
-            if (isSelected) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
