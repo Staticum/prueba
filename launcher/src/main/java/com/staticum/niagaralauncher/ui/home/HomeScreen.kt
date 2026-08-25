@@ -445,8 +445,14 @@ private fun WidgetCell(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val minHeightDp = providerInfo.minHeight.coerceAtLeast(MIN_WIDGET_HEIGHT_DP)
-    val heightDp = (entry.heightDp ?: minHeightDp).coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
+    // The provider's declared minHeight is only used to pick a sensible starting
+    // height for a newly added widget - it's often overstated (some system widgets,
+    // digital clocks in particular, declare a much larger minHeight than what they
+    // actually need to render), so it must NOT become a hard floor the user can't
+    // drag below. MIN_WIDGET_HEIGHT_DP is the only real lower bound.
+    val minHeightDp = MIN_WIDGET_HEIGHT_DP
+    val defaultHeightDp = providerInfo.minHeight.coerceIn(MIN_WIDGET_HEIGHT_DP, MAX_WIDGET_HEIGHT_DP)
+    val heightDp = (entry.heightDp ?: defaultHeightDp).coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
     val widthPercent = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
         .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
 
@@ -529,7 +535,8 @@ private fun WidgetCell(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
-                        .width(28.dp)
+                        .width(36.dp)
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
                         .pointerInput(entry.id, fullWidthPx) {
                             detectDragGestures(
                                 onDragStart = { dragWidthPx = fullWidthPx * widthPercent / 100f },
@@ -551,7 +558,8 @@ private fun WidgetCell(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(28.dp)
+                        .height(36.dp)
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
                         .pointerInput(entry.id) {
                             detectDragGestures(
                                 onDragStart = { dragHeightPx = with(density) { heightDp.dp.toPx() } },
@@ -577,7 +585,7 @@ private fun WidgetCell(
 private fun ResizeKnob() {
     Box(
         modifier = Modifier
-            .size(14.dp)
+            .size(20.dp)
             .background(
                 androidx.compose.ui.graphics.Color.White,
                 shape = androidx.compose.foundation.shape.CircleShape,
