@@ -4,9 +4,6 @@ import android.appwidget.AppWidgetManager
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,7 +51,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
@@ -258,28 +254,7 @@ fun HomeScreen(
                     textColor = palette.textSecondary,
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(28.dp),
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = activeIndexLetter != null,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f),
-            exit = fadeOut() + scaleOut(targetScale = 0.8f),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .background(palette.surface, shape = androidx.compose.foundation.shape.CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = activeIndexLetter?.toString().orEmpty(),
-                    color = palette.accent,
-                    fontSize = 40.sp,
-                    style = MaterialTheme.typography.headlineLarge,
+                        .width(48.dp),
                 )
             }
         }
@@ -582,8 +557,9 @@ private fun nearestAvailableLetter(letter: Char, available: Set<Char>): Char? {
     return available.minByOrNull { abs(it.code - letter.code) }
 }
 
-private const val MAGNIFY_BUMP = 1.7f
-private const val MAGNIFY_SIGMA = 1.15f
+private const val MAGNIFY_BUMP = 2.6f
+private const val MAGNIFY_SIGMA = 1.7f
+private const val ACTIVE_LETTER_SCALE = 2.0f
 
 @Composable
 private fun AlphabetIndexBar(
@@ -629,14 +605,21 @@ private fun AlphabetIndexBar(
                 )
             },
         verticalArrangement = Arrangement.SpaceEvenly,
-        horizontalAlignment = Alignment.CenterHorizontally,
+        // Right-aligned: as a letter's font size grows with the wave, it expands
+        // toward the left (away from the screen edge) instead of around a center,
+        // which is what makes the wave actually read as reaching left.
+        horizontalAlignment = Alignment.End,
     ) {
         ALPHABET.forEachIndexed { index, letter ->
             val isActive = letter == activeLetter
-            val targetScale = touchIndex?.let { t ->
+            val waveScale = touchIndex?.let { t ->
                 val distance = abs(t - index)
                 1f + MAGNIFY_BUMP * kotlin.math.exp(-(distance * distance) / (2 * MAGNIFY_SIGMA * MAGNIFY_SIGMA))
             } ?: 1f
+            // The active (snapped-to) letter always stands out clearly on its own,
+            // on top of whatever the wave already gives it - this replaces the old
+            // centered circle overlay as the "which letter am I on" indicator.
+            val targetScale = if (isActive) maxOf(waveScale, ACTIVE_LETTER_SCALE) else waveScale
             val scale by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = targetScale,
                 animationSpec = androidx.compose.animation.core.spring(
@@ -653,6 +636,8 @@ private fun AlphabetIndexBar(
                     else -> textColor.copy(alpha = 0.25f)
                 },
                 fontSize = MaterialTheme.typography.labelSmall.fontSize * scale,
+                fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else null,
+                modifier = Modifier.padding(end = if (isActive) 4.dp else 0.dp),
             )
         }
     }
