@@ -642,7 +642,7 @@ private fun AlphabetIndexBar(
                 fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else null,
                 modifier = Modifier
                     .padding(end = if (isActive) 4.dp else 0.dp)
-                    .offset(x = -(scale - 1f) * waveOffsetDp.dp),
+                    .offset(x = waveOffsetDp.dp * -(scale - 1f)),
             )
         }
     }
