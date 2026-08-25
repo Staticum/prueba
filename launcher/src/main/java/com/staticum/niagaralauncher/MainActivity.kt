@@ -41,6 +41,7 @@ import com.staticum.niagaralauncher.ui.theme.LauncherTheme
 import com.staticum.niagaralauncher.update.UpdateUiState
 import com.staticum.niagaralauncher.update.UpdateViewModel
 import com.staticum.niagaralauncher.util.CrashLogger
+import com.staticum.niagaralauncher.util.SafeModeGuard
 import com.staticum.niagaralauncher.util.ViewModelFactory
 import com.staticum.niagaralauncher.util.isDefaultLauncher
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
 
     private val isDefaultLauncherState = mutableStateOf(false)
     private val screenState = mutableStateOf(Screen.HOME)
+    private var widgetsSuppressed = false
 
     private val requestHomeRoleLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -100,6 +102,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // A widget that crashes the process on render could otherwise lock the user
+        // out of their own home screen forever (crash on open -> relaunch -> crash
+        // again). If the previous launch never settled, skip widgets this run so
+        // Settings (which only shows widget labels/icons, never live views) stays
+        // reachable to remove the offending one.
+        widgetsSuppressed = SafeModeGuard.onLaunchStart(this)
+
         setContent {
             val screen by screenState
             val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
@@ -115,7 +124,8 @@ class MainActivity : ComponentActivity() {
                             Screen.HOME -> HomeScreen(
                                 state = homeState,
                                 isDefaultLauncher = isDefaultLauncher,
-                                widgets = settingsState.widgets,
+                                widgets = if (widgetsSuppressed) emptyList() else settingsState.widgets,
+                                widgetsSuppressed = widgetsSuppressed,
                                 onQueryChange = homeViewModel::onQueryChange,
                                 onLaunchApp = { app -> launchApp(app) },
                                 onLongPressApp = { app -> homeViewModel.toggleHidden(app, hidden = true) },
@@ -237,6 +247,13 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         homeViewModel.refreshApps()
         isDefaultLauncherState.value = isDefaultLauncher(this)
+        // Only mark the launch as "settled" (safe to try widgets again next time)
+        // after staying up for a bit - a near-instant crash right after resuming
+        // wouldn't get the chance to run this.
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+            { SafeModeGuard.onLaunchSettled(this) },
+            2500,
+        )
     }
 
     private fun requestDefaultLauncher() {

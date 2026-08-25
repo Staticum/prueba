@@ -71,6 +71,7 @@ fun HomeScreen(
     state: HomeUiState,
     isDefaultLauncher: Boolean,
     widgets: List<WidgetEntry>,
+    widgetsSuppressed: Boolean,
     onQueryChange: (String) -> Unit,
     onLaunchApp: (AppInfo) -> Unit,
     onLongPressApp: (AppInfo) -> Unit,
@@ -168,6 +169,18 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onSetAsDefaultLauncher)
+                        .padding(vertical = 4.dp),
+                )
+            }
+
+            if (widgetsSuppressed) {
+                Text(
+                    text = "Widgets desactivados temporalmente (se detectó un cierre inesperado) · Ajustes",
+                    color = palette.accent,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedWidgetId = null; onOpenSettings() }
                         .padding(vertical = 4.dp),
                 )
             }
