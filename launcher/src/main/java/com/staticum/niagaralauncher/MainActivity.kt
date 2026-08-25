@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onToggleFavorite = settingsViewModel::toggleFavoriteApp,
                                 onShareCrashLog = { shareCrashLog() },
-                                onClearCrashLog = { CrashLogger.clear(this) },
+                                onClearCrashLog = { CrashLogger.clear(this@MainActivity) },
                             )
 
                             Screen.WIDGET_PICKER -> WidgetPickerScreen(
