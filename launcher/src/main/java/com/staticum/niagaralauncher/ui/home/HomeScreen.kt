@@ -517,19 +517,12 @@ private fun WidgetCell(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Filled.DragHandle,
-                            contentDescription = null,
-                            tint = androidx.compose.ui.graphics.Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Text(
-                            text = " Mantén y arrastra para mover",
-                            color = androidx.compose.ui.graphics.Color.White,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
+                    Text(
+                        text = "══  Mantén y arrastra para mover  ══",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
                 }
 
                 Box(
