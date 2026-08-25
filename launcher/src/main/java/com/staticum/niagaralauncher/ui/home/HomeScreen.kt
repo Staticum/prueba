@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
@@ -114,6 +115,29 @@ fun HomeScreen(
             .collect { tickPlayer.play() }
     }
 
+    val availableLetters = remember(state.visibleApps) {
+        state.visibleApps.mapNotNullTo(sortedSetOf()) { it.label.firstOrNull()?.uppercaseChar() }
+    }
+    // While a letter is actively touched on the index bar, narrow the list down
+    // to just that letter's apps (Niagara-style), instead of merely scrolling to it.
+    val displayedApps = remember(state.visibleApps, activeIndexLetter) {
+        val letter = activeIndexLetter
+        if (letter == null) state.visibleApps else state.visibleApps.filter {
+            it.label.firstOrNull()?.uppercaseChar() == letter
+        }
+    }
+
+    // Highlights the corresponding letter on the index bar as the app list is
+    // scrolled normally (not just while dragging on the bar itself), so the bar
+    // always shows roughly where in the alphabet the visible apps currently are.
+    var scrollHighlightLetter by remember { mutableStateOf<Char?>(null) }
+    LaunchedEffect(listState, displayedApps) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .collect { index ->
+                scrollHighlightLetter = displayedApps.getOrNull(index)?.label?.firstOrNull()?.uppercaseChar()
+            }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -142,10 +166,15 @@ fun HomeScreen(
                 )
             },
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .statusBarsPadding(),
+        ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
                 .padding(horizontal = 20.dp),
         ) {
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
@@ -211,54 +240,45 @@ fun HomeScreen(
                 hintColor = palette.textSecondary,
             )
 
-            val availableLetters = remember(state.visibleApps) {
-                state.visibleApps.mapNotNullTo(sortedSetOf()) { it.label.firstOrNull()?.uppercaseChar() }
-            }
-            // While a letter is actively touched on the index bar, narrow the list down
-            // to just that letter's apps (Niagara-style), instead of merely scrolling to it.
-            val displayedApps = remember(state.visibleApps, activeIndexLetter) {
-                val letter = activeIndexLetter
-                if (letter == null) state.visibleApps else state.visibleApps.filter {
-                    it.label.firstOrNull()?.uppercaseChar() == letter
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items(displayedApps, key = { it.key }) { app ->
+                    AppRow(
+                        app = app,
+                        iconSizeFactor = state.prefs.iconSizeFactor,
+                        monochrome = state.prefs.monochromeIcons,
+                        accentColor = palette.accent,
+                        textColor = palette.textPrimary,
+                        onClick = { selectedWidgetId = null; onLaunchApp(app) },
+                        onLongClick = { selectedWidgetId = null; onLongPressApp(app) },
+                        modifier = Modifier.animateItem(placementSpec = tween(220)),
+                    )
                 }
             }
+        }
 
-            Row(modifier = Modifier.fillMaxSize()) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    items(displayedApps, key = { it.key }) { app ->
-                        AppRow(
-                            app = app,
-                            iconSizeFactor = state.prefs.iconSizeFactor,
-                            monochrome = state.prefs.monochromeIcons,
-                            accentColor = palette.accent,
-                            textColor = palette.textPrimary,
-                            onClick = { selectedWidgetId = null; onLaunchApp(app) },
-                            onLongClick = { selectedWidgetId = null; onLongPressApp(app) },
-                            modifier = Modifier.animateItem(placementSpec = tween(220)),
-                        )
-                    }
-                }
-
-                AlphabetIndexBar(
-                    availableLetters = availableLetters,
-                    activeLetter = activeIndexLetter,
-                    onLetterActive = { letter ->
-                        activeIndexLetter = letter?.let { nearestAvailableLetter(it, availableLetters) }
-                    },
-                    waveOffsetDp = state.prefs.indexWaveOffsetDp,
-                    accentColor = palette.accent,
-                    textColor = palette.textSecondary,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(28.dp),
-                )
-            }
+        // Spans the entire right edge of the screen, top to bottom, regardless of
+        // whether widgets/favorites push the app list down - so all 26 letters are
+        // always available and never get squeezed out by other content above.
+        AlphabetIndexBar(
+            availableLetters = availableLetters,
+            activeLetter = activeIndexLetter ?: scrollHighlightLetter,
+            onLetterActive = { letter ->
+                activeIndexLetter = letter?.let { nearestAvailableLetter(it, availableLetters) }
+            },
+            waveOffsetDp = state.prefs.indexWaveOffsetDp,
+            accentColor = palette.accent,
+            textColor = palette.textSecondary,
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(28.dp)
+                .padding(end = 4.dp),
+        )
         }
     }
 }
@@ -579,6 +599,20 @@ private fun AlphabetIndexBar(
     // magnification wave, so it moves smoothly even while activeLetter is unchanged.
     var touchIndex by remember { mutableStateOf<Float?>(null) }
 
+    val density = LocalDensity.current
+    // Shrinks the base letter size to whatever the actually available height allows,
+    // so all 26 letters always fit without clipping/overlap - independent of screen
+    // size or how much vertical space other content above leaves for this bar - while
+    // never growing past the normal design size on tall screens.
+    val designFontSize = MaterialTheme.typography.labelSmall.fontSize
+    val baseFontSize = if (heightPx <= 0f) {
+        designFontSize
+    } else {
+        val slotHeightPx = heightPx / ALPHABET.size
+        val autoSizeValue = with(density) { (slotHeightPx * 0.72f).toSp().value }
+        kotlin.math.min(designFontSize.value, autoSizeValue).sp
+    }
+
     fun indexAt(y: Float): Float? {
         if (heightPx <= 0f) return null
         return (y / heightPx * ALPHABET.size).coerceIn(0f, ALPHABET.size - 1f)
@@ -638,7 +672,7 @@ private fun AlphabetIndexBar(
                     letter in availableLetters -> textColor
                     else -> textColor.copy(alpha = 0.25f)
                 },
-                fontSize = MaterialTheme.typography.labelSmall.fontSize * scale,
+                fontSize = baseFontSize * scale,
                 fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else null,
                 modifier = Modifier
                     .padding(end = if (isActive) 4.dp else 0.dp)

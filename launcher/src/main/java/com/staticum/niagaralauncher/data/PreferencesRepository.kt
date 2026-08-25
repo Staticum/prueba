@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.compose.ui.graphics.Color
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.util.SoundOption
 import kotlinx.coroutines.flow.Flow
@@ -32,11 +34,19 @@ data class LauncherPrefs(
     val soundId: String = SoundOption.DEFAULT.id,
     val soundVolume: Float = 0.5f,
     val indexWaveOffsetDp: Float = 24f,
+    val customAccentArgb: Int? = null,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
     val favoriteAppKeys: List<String> = emptyList(),
 ) {
-    val palette: ColorPalette get() = ColorPalette.fromId(paletteId)
+    val palette: ColorPalette get() {
+        val base = ColorPalette.fromId(paletteId)
+        return if (paletteId == ColorPalette.CUSTOM_ID && customAccentArgb != null) {
+            base.copy(accent = Color(customAccentArgb))
+        } else {
+            base
+        }
+    }
 }
 
 class PreferencesRepository(private val context: Context) {
@@ -51,6 +61,7 @@ class PreferencesRepository(private val context: Context) {
         val SOUND_ID = stringPreferencesKey("sound_id")
         val SOUND_VOLUME = floatPreferencesKey("sound_volume")
         val INDEX_WAVE_OFFSET = floatPreferencesKey("index_wave_offset")
+        val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
         val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
         val GESTURE_UP = stringPreferencesKey("gesture_up")
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
@@ -78,6 +89,7 @@ class PreferencesRepository(private val context: Context) {
             soundId = prefs[Keys.SOUND_ID] ?: SoundOption.DEFAULT.id,
             soundVolume = prefs[Keys.SOUND_VOLUME] ?: 0.5f,
             indexWaveOffsetDp = prefs[Keys.INDEX_WAVE_OFFSET] ?: 24f,
+            customAccentArgb = prefs[Keys.CUSTOM_ACCENT],
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
             favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -120,6 +132,13 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setIndexWaveOffset(offsetDp: Float) {
         context.dataStore.edit { it[Keys.INDEX_WAVE_OFFSET] = offsetDp.coerceIn(0f, 64f) }
+    }
+
+    suspend fun setCustomAccentColor(argb: Int) {
+        context.dataStore.edit {
+            it[Keys.PALETTE_ID] = ColorPalette.CUSTOM_ID
+            it[Keys.CUSTOM_ACCENT] = argb
+        }
     }
 
     suspend fun toggleHiddenApp(appKey: String, hidden: Boolean) {

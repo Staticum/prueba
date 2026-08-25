@@ -70,6 +70,7 @@ fun SettingsScreen(
     onInstallUpdate: () -> Unit,
     onOpenFavoritesPicker: () -> Unit,
     onOpenHiddenPicker: () -> Unit,
+    onOpenColorPicker: () -> Unit,
     onShareCrashLog: () -> Unit,
     onClearCrashLog: () -> Unit,
 ) {
@@ -104,11 +105,18 @@ fun SettingsScreen(
             item { SectionTitle("Paleta de colores", palette.textSecondary, first = true) }
             item {
                 LazyRow {
-                    items(ColorPalette.entries) { p ->
+                    items(ColorPalette.PRESETS) { p ->
                         PaletteSwatch(
                             palette = p,
-                            selected = p == palette,
+                            selected = p.id == palette.id,
                             onClick = { onPaletteSelected(p) },
+                        )
+                    }
+                    item {
+                        CustomPaletteSwatch(
+                            selected = palette.id == ColorPalette.CUSTOM_ID,
+                            currentAccent = if (palette.id == ColorPalette.CUSTOM_ID) palette.accent else null,
+                            onClick = onOpenColorPicker,
                         )
                     }
                 }
@@ -549,6 +557,45 @@ private fun UpdateSection(
                     modifier = Modifier.padding(top = 4.dp).clickable(onClick = onCheckForUpdate),
                 )
             }
+        }
+    }
+}
+
+/** Opens the RGB/HSV picker instead of applying a fixed color directly - shows a
+ * rainbow ring when nothing custom is picked yet, or a solid swatch of the user's
+ * current custom accent once they've chosen one. */
+@Composable
+private fun CustomPaletteSwatch(
+    selected: Boolean,
+    currentAccent: androidx.compose.ui.graphics.Color?,
+    onClick: () -> Unit,
+) {
+    val rainbow = remember {
+        androidx.compose.ui.graphics.Brush.sweepGradient(
+            listOf(
+                androidx.compose.ui.graphics.Color.Red,
+                androidx.compose.ui.graphics.Color.Yellow,
+                androidx.compose.ui.graphics.Color.Green,
+                androidx.compose.ui.graphics.Color.Cyan,
+                androidx.compose.ui.graphics.Color.Blue,
+                androidx.compose.ui.graphics.Color.Magenta,
+                androidx.compose.ui.graphics.Color.Red,
+            ),
+        )
+    }
+    Box(
+        modifier = Modifier
+            .padding(end = 12.dp)
+            .size(56.dp)
+            .clip(CircleShape)
+            .then(
+                if (currentAccent != null) Modifier.background(currentAccent) else Modifier.background(rainbow),
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) {
+            Icon(Icons.Filled.Check, contentDescription = null, tint = androidx.compose.ui.graphics.Color.White)
         }
     }
 }

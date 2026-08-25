@@ -36,6 +36,7 @@ import com.staticum.niagaralauncher.data.SwipeDirection
 import com.staticum.niagaralauncher.ui.home.HomeScreen
 import com.staticum.niagaralauncher.ui.home.HomeViewModel
 import com.staticum.niagaralauncher.ui.settings.AppPickerScreen
+import com.staticum.niagaralauncher.ui.settings.ColorPickerScreen
 import com.staticum.niagaralauncher.ui.settings.SettingsScreen
 import com.staticum.niagaralauncher.ui.settings.SettingsViewModel
 import com.staticum.niagaralauncher.ui.theme.LauncherTheme
@@ -48,7 +49,7 @@ import com.staticum.niagaralauncher.util.isDefaultLauncher
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
 import com.staticum.niagaralauncher.widget.WidgetPickerScreen
 
-private enum class Screen { HOME, SETTINGS, WIDGET_PICKER, FAVORITES_PICKER, HIDDEN_PICKER }
+private enum class Screen { HOME, SETTINGS, WIDGET_PICKER, FAVORITES_PICKER, HIDDEN_PICKER, COLOR_PICKER }
 
 class MainActivity : ComponentActivity() {
 
@@ -175,6 +176,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenFavoritesPicker = { screenState.value = Screen.FAVORITES_PICKER },
                                 onOpenHiddenPicker = { screenState.value = Screen.HIDDEN_PICKER },
+                                onOpenColorPicker = { screenState.value = Screen.COLOR_PICKER },
                                 onShareCrashLog = { shareCrashLog() },
                                 onClearCrashLog = { CrashLogger.clear(this@MainActivity) },
                             )
@@ -200,6 +202,15 @@ class MainActivity : ComponentActivity() {
                                 allApps = homeState.allApps,
                                 selectedKeys = homeState.prefs.hiddenApps,
                                 onToggle = { app, hidden -> homeViewModel.toggleHidden(app, hidden) },
+                                onBack = { screenState.value = Screen.SETTINGS },
+                            )
+
+                            Screen.COLOR_PICKER -> ColorPickerScreen(
+                                palette = homeState.prefs.palette,
+                                initialColor = homeState.prefs.palette.accent,
+                                onColorChange = { color ->
+                                    settingsViewModel.setCustomAccentColor(color.toArgb())
+                                },
                                 onBack = { screenState.value = Screen.SETTINGS },
                             )
                         }

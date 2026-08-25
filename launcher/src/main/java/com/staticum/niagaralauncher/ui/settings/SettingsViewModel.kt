@@ -55,6 +55,9 @@ class SettingsViewModel(
     fun setIndexWaveOffset(offsetDp: Float) =
         viewModelScope.launch { preferencesRepository.setIndexWaveOffset(offsetDp) }
 
+    fun setCustomAccentColor(argb: Int) =
+        viewModelScope.launch { preferencesRepository.setCustomAccentColor(argb) }
+
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
     fun removeWidget(id: Int) = viewModelScope.launch { widgetRepository.removeWidgetId(id) }
