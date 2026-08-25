@@ -42,13 +42,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -63,7 +63,6 @@ import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
 import com.staticum.niagaralauncher.widget.WidgetEntry
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
@@ -92,7 +91,6 @@ fun HomeScreen(
     var dragY = 0f
 
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
     val tickPlayer = remember { TickPlayer(context) }
@@ -216,6 +214,18 @@ fun HomeScreen(
                 hintColor = palette.textSecondary,
             )
 
+            val availableLetters = remember(state.visibleApps) {
+                state.visibleApps.mapNotNullTo(sortedSetOf()) { it.label.firstOrNull()?.uppercaseChar() }
+            }
+            // While a letter is actively touched on the index bar, narrow the list down
+            // to just that letter's apps (Niagara-style), instead of merely scrolling to it.
+            val displayedApps = remember(state.visibleApps, activeIndexLetter) {
+                val letter = activeIndexLetter
+                if (letter == null) state.visibleApps else state.visibleApps.filter {
+                    it.label.firstOrNull()?.uppercaseChar() == letter
+                }
+            }
+
             Row(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
@@ -224,7 +234,7 @@ fun HomeScreen(
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    items(state.visibleApps, key = { it.key }) { app ->
+                    items(displayedApps, key = { it.key }) { app ->
                         AppRow(
                             app = app,
                             iconSizeFactor = state.prefs.iconSizeFactor,
@@ -238,28 +248,17 @@ fun HomeScreen(
                     }
                 }
 
-                val availableLetters = remember(state.visibleApps) {
-                    state.visibleApps.mapNotNullTo(sortedSetOf()) { it.label.firstOrNull()?.uppercaseChar() }
-                }
                 AlphabetIndexBar(
                     availableLetters = availableLetters,
                     activeLetter = activeIndexLetter,
                     onLetterActive = { letter ->
-                        activeIndexLetter = letter
-                        if (letter == null) return@AlphabetIndexBar
-                        val target = nearestAvailableLetter(letter, availableLetters) ?: return@AlphabetIndexBar
-                        val index = state.visibleApps.indexOfFirst {
-                            it.label.firstOrNull()?.uppercaseChar() == target
-                        }
-                        if (index >= 0) {
-                            coroutineScope.launch { listState.scrollToItem(index) }
-                        }
+                        activeIndexLetter = letter?.let { nearestAvailableLetter(it, availableLetters) }
                     },
                     accentColor = palette.accent,
                     textColor = palette.textSecondary,
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(24.dp),
+                        .width(28.dp),
                 )
             }
         }
@@ -534,10 +533,11 @@ private fun ZenQuoteBanner(textColor: androidx.compose.ui.graphics.Color) {
         Text(
             text = quote,
             color = textColor,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 10.dp),
+                .padding(top = 8.dp, bottom = 14.dp),
         )
     }
 }
@@ -582,6 +582,9 @@ private fun nearestAvailableLetter(letter: Char, available: Set<Char>): Char? {
     return available.minByOrNull { abs(it.code - letter.code) }
 }
 
+private const val MAGNIFY_BUMP = 1.7f
+private const val MAGNIFY_SIGMA = 1.15f
+
 @Composable
 private fun AlphabetIndexBar(
     availableLetters: Set<Char>,
@@ -592,12 +595,17 @@ private fun AlphabetIndexBar(
     modifier: Modifier = Modifier,
 ) {
     var heightPx by remember { mutableFloatStateOf(0f) }
+    // Continuous fractional index under the finger, independent of activeLetter (which
+    // snaps to the nearest available letter) - this is what drives the dock-style
+    // magnification wave, so it moves smoothly even while activeLetter is unchanged.
+    var touchIndex by remember { mutableStateOf<Float?>(null) }
 
-    fun letterAt(y: Float): Char? {
+    fun indexAt(y: Float): Float? {
         if (heightPx <= 0f) return null
-        val index = (y / heightPx * ALPHABET.size).toInt().coerceIn(0, ALPHABET.size - 1)
-        return ALPHABET[index]
+        return (y / heightPx * ALPHABET.size).coerceIn(0f, ALPHABET.size - 1f)
     }
+
+    fun letterAt(y: Float): Char? = indexAt(y)?.let { ALPHABET[it.toInt()] }
 
     Column(
         modifier = modifier
@@ -607,17 +615,36 @@ private fun AlphabetIndexBar(
             }
             .pointerInput(Unit) {
                 detectDragGestures(
-                    onDragStart = { offset -> onLetterActive(letterAt(offset.y)) },
-                    onDrag = { change, _ -> change.consume(); onLetterActive(letterAt(change.position.y)) },
-                    onDragEnd = { onLetterActive(null) },
-                    onDragCancel = { onLetterActive(null) },
+                    onDragStart = { offset ->
+                        touchIndex = indexAt(offset.y)
+                        onLetterActive(letterAt(offset.y))
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        touchIndex = indexAt(change.position.y)
+                        onLetterActive(letterAt(change.position.y))
+                    },
+                    onDragEnd = { touchIndex = null; onLetterActive(null) },
+                    onDragCancel = { touchIndex = null; onLetterActive(null) },
                 )
             },
         verticalArrangement = Arrangement.SpaceEvenly,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ALPHABET.forEach { letter ->
+        ALPHABET.forEachIndexed { index, letter ->
             val isActive = letter == activeLetter
+            val targetScale = touchIndex?.let { t ->
+                val distance = abs(t - index)
+                1f + MAGNIFY_BUMP * kotlin.math.exp(-(distance * distance) / (2 * MAGNIFY_SIGMA * MAGNIFY_SIGMA))
+            } ?: 1f
+            val scale by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = targetScale,
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                ),
+                label = "letterMagnify",
+            )
             Text(
                 text = letter.toString(),
                 color = when {
@@ -625,7 +652,12 @@ private fun AlphabetIndexBar(
                     letter in availableLetters -> textColor
                     else -> textColor.copy(alpha = 0.25f)
                 },
-                style = if (isActive) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = -(scale - 1f) * 10f
+                },
             )
         }
     }
