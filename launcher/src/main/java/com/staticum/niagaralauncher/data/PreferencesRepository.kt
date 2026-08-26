@@ -43,6 +43,9 @@ data class LauncherPrefs(
     val customAccentArgb: Int? = null,
     val ambientLockEnabled: Boolean = false,
     val widgetBackground: WidgetBackground = WidgetBackground.NONE,
+    val frequentsEnabled: Boolean = true,
+    val frequentsCount: Int = 6,
+    val useSystemUsageStats: Boolean = false,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
     val favoriteAppKeys: List<String> = emptyList(),
@@ -72,6 +75,9 @@ class PreferencesRepository(private val context: Context) {
         val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
         val AMBIENT_LOCK = booleanPreferencesKey("ambient_lock_enabled")
         val WIDGET_BACKGROUND = stringPreferencesKey("widget_background")
+        val FREQUENTS_ENABLED = booleanPreferencesKey("frequents_enabled")
+        val FREQUENTS_COUNT = intPreferencesKey("frequents_count")
+        val USE_SYSTEM_USAGE = booleanPreferencesKey("use_system_usage_stats")
         val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
         val GESTURE_UP = stringPreferencesKey("gesture_up")
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
@@ -104,6 +110,9 @@ class PreferencesRepository(private val context: Context) {
             widgetBackground = prefs[Keys.WIDGET_BACKGROUND]?.let { raw ->
                 runCatching { WidgetBackground.valueOf(raw) }.getOrNull()
             } ?: WidgetBackground.NONE,
+            frequentsEnabled = prefs[Keys.FREQUENTS_ENABLED] ?: true,
+            frequentsCount = (prefs[Keys.FREQUENTS_COUNT] ?: 6).coerceIn(4, 10),
+            useSystemUsageStats = prefs[Keys.USE_SYSTEM_USAGE] ?: false,
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
             favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -161,6 +170,18 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setWidgetBackground(background: WidgetBackground) {
         context.dataStore.edit { it[Keys.WIDGET_BACKGROUND] = background.name }
+    }
+
+    suspend fun setFrequentsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.FREQUENTS_ENABLED] = enabled }
+    }
+
+    suspend fun setFrequentsCount(count: Int) {
+        context.dataStore.edit { it[Keys.FREQUENTS_COUNT] = count.coerceIn(4, 10) }
+    }
+
+    suspend fun setUseSystemUsageStats(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.USE_SYSTEM_USAGE] = enabled }
     }
 
     suspend fun toggleHiddenApp(appKey: String, hidden: Boolean) {

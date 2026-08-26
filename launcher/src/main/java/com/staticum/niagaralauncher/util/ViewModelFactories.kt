@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.staticum.niagaralauncher.data.AppRepository
 import com.staticum.niagaralauncher.data.PreferencesRepository
+import com.staticum.niagaralauncher.data.UsageRepository
 import com.staticum.niagaralauncher.ui.home.HomeViewModel
 import com.staticum.niagaralauncher.ui.settings.SettingsViewModel
 import com.staticum.niagaralauncher.update.UpdateChecker
@@ -16,11 +17,12 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
     private val appRepository by lazy { AppRepository(context.applicationContext) }
     private val preferencesRepository by lazy { PreferencesRepository(context.applicationContext) }
     private val widgetRepository by lazy { WidgetRepository(context.applicationContext) }
+    private val usageRepository by lazy { UsageRepository(context.applicationContext) }
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
-        HomeViewModel::class.java -> HomeViewModel(appRepository, preferencesRepository) as T
-        SettingsViewModel::class.java -> SettingsViewModel(preferencesRepository, widgetRepository) as T
+        HomeViewModel::class.java -> HomeViewModel(appRepository, preferencesRepository, usageRepository) as T
+        SettingsViewModel::class.java -> SettingsViewModel(preferencesRepository, widgetRepository, usageRepository) as T
         UpdateViewModel::class.java -> {
             val versionCode = context.packageManager
                 .getPackageInfo(context.packageName, 0)

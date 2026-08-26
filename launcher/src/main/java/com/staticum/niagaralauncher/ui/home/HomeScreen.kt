@@ -152,11 +152,27 @@ fun HomeScreen(
     }
     // While a letter is actively touched on the index bar, narrow the list down
     // to just that letter's apps (Niagara-style), instead of merely scrolling to it.
-    val displayedApps = remember(state.visibleApps, activeIndexLetter) {
+    val displayedApps = remember(state.visibleApps, activeIndexLetter, state.localScores, state.systemScores) {
         val letter = activeIndexLetter
-        if (letter == null) state.visibleApps else state.visibleApps.filter {
-            it.label.firstOrNull()?.uppercaseChar() == letter
+        if (letter == null) {
+            state.visibleApps
+        } else {
+            // Inside a single letter, alphabetical order is arbitrary to the user -
+            // what they want is the app of that letter they actually use. Ties (score
+            // 0, i.e. never used) keep the alphabetical order they already had, since
+            // sortedByDescending is stable.
+            state.visibleApps
+                .filter { it.label.firstOrNull()?.uppercaseChar() == letter }
+                .sortedByDescending { state.usageScoreFor(it) }
         }
+    }
+
+    // Suggestions must not get in the way of an explicit intent: while searching or
+    // while a letter is being filtered, the user already knows what they are after.
+    val frequentApps = if (state.query.isBlank() && activeIndexLetter == null) {
+        state.frequentApps
+    } else {
+        emptyList()
     }
 
     // Highlights the corresponding letter on the index bar as the app list is
@@ -303,6 +319,45 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
+                    if (frequentApps.isNotEmpty()) {
+                        // Deliberately items *of* the list rather than a fixed block
+                        // above it: this way the section scrolls away instead of
+                        // permanently eating vertical space.
+                        item(key = "frequents_header") {
+                            Text(
+                                text = "Frecuentes",
+                                color = palette.textSecondary,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(
+                                    start = SpaceSm,
+                                    top = SpaceXs,
+                                    bottom = SpaceXs,
+                                ),
+                            )
+                        }
+                        items(frequentApps, key = { "freq_${it.key}" }) { app ->
+                            AppRow(
+                                app = app,
+                                iconSizeFactor = state.prefs.iconSizeFactor,
+                                monochrome = state.prefs.monochromeIcons,
+                                accentColor = palette.accent,
+                                textColor = palette.textPrimary,
+                                onClick = { selectedWidgetId = null; onLaunchApp(app) },
+                                onLongClick = { selectedWidgetId = null; onLongPressApp(app) },
+                                modifier = Modifier.animateItem(placementSpec = tween(220)),
+                            )
+                        }
+                        item(key = "frequents_divider") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = SpaceSm, vertical = SpaceSm)
+                                    .height(1.dp)
+                                    .background(palette.textSecondary.copy(alpha = 0.15f)),
+                            )
+                        }
+                    }
+
                     items(displayedApps, key = { it.key }) { app ->
                         AppRow(
                             app = app,

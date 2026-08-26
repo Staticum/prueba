@@ -90,6 +90,12 @@ fun SettingsScreen(
     onChangeDefaultLauncher: () -> Unit,
     onAmbientLockChange: (Boolean) -> Unit,
     onWidgetBackgroundChange: (WidgetBackground) -> Unit,
+    onFrequentsEnabledChange: (Boolean) -> Unit,
+    onFrequentsCountChange: (Int) -> Unit,
+    onUseSystemUsageChange: (Boolean) -> Unit,
+    hasUsageAccess: Boolean,
+    onOpenUsageAccess: () -> Unit,
+    onClearUsageHistory: () -> Unit,
 ) {
     val palette = state.prefs.palette
 
@@ -324,6 +330,59 @@ fun SettingsScreen(
             }
 
             // ------------------------------------------------------------- INTERACCIÓN
+            // ----------------------------------------------------------- FRECUENTES
+            item { SettingsSectionHeader("Apps frecuentes", palette) }
+            item {
+                SettingsCard(palette) {
+                    SettingsSwitchRow(
+                        title = "Mostrar frecuentes",
+                        subtitle = "Muestra arriba de la lista las apps que más usas últimamente. Todo se guarda en el teléfono, no sale del dispositivo",
+                        checked = state.prefs.frequentsEnabled,
+                        palette = palette,
+                        onCheckedChange = onFrequentsEnabledChange,
+                    )
+                    if (state.prefs.frequentsEnabled) {
+                        SettingsCardDivider(palette)
+                        SettingsSliderRow(
+                            title = "Cuántas mostrar",
+                            value = state.prefs.frequentsCount.toFloat(),
+                            valueRange = 4f..10f,
+                            palette = palette,
+                            onValueChange = { onFrequentsCountChange(it.toInt()) },
+                            valueLabel = { "${it.toInt()} apps" },
+                        )
+                        SettingsCardDivider(palette)
+                        SettingsSwitchRow(
+                            title = "Usar estadísticas del sistema",
+                            subtitle = if (hasUsageAccess) {
+                                "Acceso concedido. Cuenta también las apps que abres desde una notificación, no solo desde MinZen"
+                            } else {
+                                "Requiere Acceso de uso. Sin él solo se cuentan las apps abiertas desde MinZen, así que la mensajería queda subestimada"
+                            },
+                            checked = state.prefs.useSystemUsageStats,
+                            palette = palette,
+                            onCheckedChange = onUseSystemUsageChange,
+                        )
+                        if (state.prefs.useSystemUsageStats && !hasUsageAccess) {
+                            SettingsCardDivider(palette)
+                            SettingsRow(
+                                title = "Conceder Acceso de uso",
+                                subtitle = "Android no permite pedirlo con un diálogo: hay que activarlo a mano",
+                                palette = palette,
+                                onClick = onOpenUsageAccess,
+                            )
+                        }
+                        SettingsCardDivider(palette)
+                        SettingsRow(
+                            title = "Borrar historial de uso",
+                            subtitle = "Vacía el contador propio de MinZen",
+                            palette = palette,
+                            onClick = onClearUsageHistory,
+                        )
+                    }
+                }
+            }
+
             item { SettingsSectionHeader("Lista de apps e índice A-Z", palette) }
             item {
                 SettingsCard(palette) {

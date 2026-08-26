@@ -128,6 +128,11 @@ class MainActivity : ComponentActivity() {
             val isDefaultLauncher by isDefaultLauncherState
             val context = LocalContext.current
             val lockTriggerValue by lockTrigger
+            // Re-read on every resume (the trigger bumps in onStart), because the
+            // user grants Usage access in the system settings and comes back.
+            val hasUsageAccess = remember(lockTriggerValue, screen) {
+                com.staticum.niagaralauncher.data.UsageRepository.hasUsageAccess(this@MainActivity)
+            }
 
             var isLocked by remember { mutableStateOf(false) }
             LaunchedEffect(homeState.prefs.ambientLockEnabled, lockTriggerValue) {
@@ -213,6 +218,16 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onAmbientLockChange = settingsViewModel::setAmbientLockEnabled,
                                 onWidgetBackgroundChange = settingsViewModel::setWidgetBackground,
+                                onFrequentsEnabledChange = settingsViewModel::setFrequentsEnabled,
+                                onFrequentsCountChange = settingsViewModel::setFrequentsCount,
+                                onUseSystemUsageChange = { enabled ->
+                                    settingsViewModel.setUseSystemUsageStats(enabled)
+                                    if (enabled && !hasUsageAccess) openUsageAccessSettings()
+                                    homeViewModel.refreshSystemUsage()
+                                },
+                                hasUsageAccess = hasUsageAccess,
+                                onOpenUsageAccess = { openUsageAccessSettings() },
+                                onClearUsageHistory = { settingsViewModel.clearUsageHistory() },
                             )
 
                             Screen.WIDGET_PICKER -> WidgetPickerScreen(
@@ -330,6 +345,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         homeViewModel.refreshApps()
         isDefaultLauncherState.value = isDefaultLauncher(this)
+        homeViewModel.refreshSystemUsage()
         // Only mark the launch as "settled" (safe to try widgets again next time)
         // after staying up for a bit - a near-instant crash right after resuming
         // wouldn't get the chance to run this.
@@ -351,8 +367,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun launchApp(app: AppInfo) {
+        // Single choke point for every app opening in the launcher, so this is the
+        // one place the usage counter has to be fed.
+        homeViewModel.recordLaunch(app)
         val factory = com.staticum.niagaralauncher.data.AppRepository(this)
         startActivity(factory.launchIntentFor(app))
+    }
+
+    /** PACKAGE_USAGE_STATS is a special permission: there is no runtime dialog for
+     * it, the user has to toggle it by hand in the system's Usage access screen. */
+    private fun openUsageAccessSettings() {
+        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+        if (intent.resolveActivity(packageManager) != null) {
+            startActivity(intent)
+        } else {
+            android.widget.Toast.makeText(
+                this,
+                "Este dispositivo no ofrece la pantalla de Acceso de uso",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
     }
 
     private fun shareCrashLog() {

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.data.PreferencesRepository
 import com.staticum.niagaralauncher.data.ScreenTintMode
+import com.staticum.niagaralauncher.data.UsageRepository
 import com.staticum.niagaralauncher.data.WidgetBackground
 import com.staticum.niagaralauncher.widget.WidgetEntry
 import com.staticum.niagaralauncher.widget.WidgetRepository
@@ -24,6 +25,7 @@ data class SettingsUiState(
 class SettingsViewModel(
     private val preferencesRepository: PreferencesRepository,
     private val widgetRepository: WidgetRepository,
+    private val usageRepository: UsageRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -64,6 +66,17 @@ class SettingsViewModel(
 
     fun setWidgetBackground(background: WidgetBackground) =
         viewModelScope.launch { preferencesRepository.setWidgetBackground(background) }
+
+    fun setFrequentsEnabled(enabled: Boolean) =
+        viewModelScope.launch { preferencesRepository.setFrequentsEnabled(enabled) }
+
+    fun setFrequentsCount(count: Int) =
+        viewModelScope.launch { preferencesRepository.setFrequentsCount(count) }
+
+    fun setUseSystemUsageStats(enabled: Boolean) =
+        viewModelScope.launch { preferencesRepository.setUseSystemUsageStats(enabled) }
+
+    fun clearUsageHistory() = viewModelScope.launch { usageRepository.clear() }
 
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
