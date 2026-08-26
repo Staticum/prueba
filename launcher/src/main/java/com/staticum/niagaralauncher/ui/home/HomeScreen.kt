@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,18 +47,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
+import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
 import com.staticum.niagaralauncher.widget.WidgetEntry
@@ -239,27 +246,38 @@ fun HomeScreen(
             SearchField(
                 query = state.query,
                 onQueryChange = { selectedWidgetId = null; onQueryChange(it) },
-                textColor = palette.textPrimary,
-                hintColor = palette.textSecondary,
+                palette = palette,
             )
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                items(displayedApps, key = { it.key }) { app ->
-                    AppRow(
-                        app = app,
-                        iconSizeFactor = state.prefs.iconSizeFactor,
-                        monochrome = state.prefs.monochromeIcons,
-                        accentColor = palette.accent,
-                        textColor = palette.textPrimary,
-                        onClick = { selectedWidgetId = null; onLaunchApp(app) },
-                        onLongClick = { selectedWidgetId = null; onLongPressApp(app) },
-                        modifier = Modifier.animateItem(placementSpec = tween(220)),
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    items(displayedApps, key = { it.key }) { app ->
+                        AppRow(
+                            app = app,
+                            iconSizeFactor = state.prefs.iconSizeFactor,
+                            monochrome = state.prefs.monochromeIcons,
+                            accentColor = palette.accent,
+                            textColor = palette.textPrimary,
+                            onClick = { selectedWidgetId = null; onLaunchApp(app) },
+                            onLongClick = { selectedWidgetId = null; onLongPressApp(app) },
+                            modifier = Modifier.animateItem(placementSpec = tween(220)),
+                        )
+                    }
+                }
+
+                // Previously a search with no matches just left a blank void with no
+                // explanation - the user couldn't tell the difference between "nothing
+                // matches" and "the app broke".
+                if (displayedApps.isEmpty()) {
+                    EmptyAppList(
+                        query = state.query,
+                        activeLetter = activeIndexLetter,
+                        palette = palette,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp),
                     )
                 }
             }
@@ -463,6 +481,9 @@ private fun WidgetCell(
     // accumulator resets, so a single continuous drag can move it several spots.
     var reorderDragPx by remember(entry.id) { mutableFloatStateOf(0f) }
     val reorderStepPx = with(density) { 36.dp.toPx() }
+    // Confirms the long-press registered and each reorder step landed, without
+    // needing to watch the widget move.
+    val haptics = LocalHapticFeedback.current
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -483,7 +504,10 @@ private fun WidgetCell(
                     },
                 )
                 .pointerInput(entry.id) {
-                    detectTapGestures(onLongPress = { onSelect() })
+                    detectTapGestures(onLongPress = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSelect()
+                    })
                 },
         ) {
             ComposeAppWidgetHost(
@@ -503,10 +527,12 @@ private fun WidgetCell(
                     reorderDragPx += delta
                     while (reorderDragPx > reorderStepPx) {
                         onMoveWidget(entry.id, 1)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         reorderDragPx -= reorderStepPx
                     }
                     while (reorderDragPx < -reorderStepPx) {
                         onMoveWidget(entry.id, -1)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         reorderDragPx += reorderStepPx
                     }
                 }
@@ -679,6 +705,13 @@ private fun AlphabetIndexBar(
     // magnification wave, so it moves smoothly even while activeLetter is unchanged.
     var touchIndex by remember { mutableStateOf<Float?>(null) }
 
+    // One light tick each time the finger crosses into a new letter, so scrubbing the
+    // index feels like a physical detent rather than a silent slide. Tracked
+    // separately from activeLetter so it fires on every letter boundary crossed,
+    // including letters with no apps behind them.
+    val haptics = LocalHapticFeedback.current
+    var lastHapticLetter by remember { mutableStateOf<Char?>(null) }
+
     val density = LocalDensity.current
     // Shrinks the base letter size to whatever the actually available height allows,
     // so all 26 letters always fit without clipping/overlap - independent of screen
@@ -700,25 +733,40 @@ private fun AlphabetIndexBar(
 
     fun letterAt(y: Float): Char? = indexAt(y)?.let { ALPHABET[it.toInt()] }
 
+    fun tickFor(letter: Char?) {
+        if (letter != null && letter != lastHapticLetter) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+        lastHapticLetter = letter
+    }
+
     Column(
         modifier = modifier
             .onGloballyPositioned { heightPx = it.size.height.toFloat() }
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { offset -> onLetterActive(letterAt(offset.y)) })
+                detectTapGestures(onTap = { offset ->
+                    val letter = letterAt(offset.y)
+                    tickFor(letter)
+                    onLetterActive(letter)
+                })
             }
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         touchIndex = indexAt(offset.y)
-                        onLetterActive(letterAt(offset.y))
+                        val letter = letterAt(offset.y)
+                        tickFor(letter)
+                        onLetterActive(letter)
                     },
                     onDrag = { change, _ ->
                         change.consume()
                         touchIndex = indexAt(change.position.y)
-                        onLetterActive(letterAt(change.position.y))
+                        val letter = letterAt(change.position.y)
+                        tickFor(letter)
+                        onLetterActive(letter)
                     },
-                    onDragEnd = { touchIndex = null; onLetterActive(null) },
-                    onDragCancel = { touchIndex = null; onLetterActive(null) },
+                    onDragEnd = { touchIndex = null; lastHapticLetter = null; onLetterActive(null) },
+                    onDragCancel = { touchIndex = null; lastHapticLetter = null; onLetterActive(null) },
                 )
             },
         verticalArrangement = Arrangement.SpaceEvenly,
@@ -762,30 +810,115 @@ private fun AlphabetIndexBar(
     }
 }
 
+/**
+ * The search field used to be a bare line of hint text with no icon, no container
+ * and no way to clear it - it read as a label rather than an input. It's now a
+ * proper field: a search icon anchors it, the container lifts on focus, and a
+ * clear button appears as soon as there's something to clear.
+ */
 @Composable
 private fun SearchField(
     query: String,
     onQueryChange: (String) -> Unit,
-    textColor: androidx.compose.ui.graphics.Color,
-    hintColor: androidx.compose.ui.graphics.Color,
+    palette: ColorPalette,
 ) {
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+    var focused by remember { mutableStateOf(false) }
+    val active = focused || query.isNotEmpty()
+    val borderColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (active) palette.accent.copy(alpha = 0.55f) else palette.textPrimary.copy(alpha = 0.12f),
+        animationSpec = tween(200),
+        label = "searchBorder",
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+            .background(palette.textPrimary.copy(alpha = 0.06f))
+            .border(1.dp, borderColor, androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+            .padding(start = 14.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = null,
+            tint = if (active) palette.accent else palette.textSecondary,
+            modifier = Modifier.size(20.dp),
+        )
         BasicTextField(
             value = query,
             onValueChange = onQueryChange,
             singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = textColor),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(textColor),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.textPrimary),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(palette.accent),
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp, top = 14.dp, bottom = 14.dp)
+                .onFocusChanged { focused = it.isFocused },
             decorationBox = { inner ->
                 if (query.isEmpty()) {
                     Text(
                         text = "Buscar app…",
-                        color = hintColor,
+                        color = palette.textSecondary,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
                 inner()
             },
+        )
+        AnimatedVisibility(visible = query.isNotEmpty(), enter = fadeIn(tween(150))) {
+            IconButton(onClick = { onQueryChange("") }) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Borrar búsqueda",
+                    tint = palette.textSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+/** Explains *why* the list is empty instead of showing a blank screen. */
+@Composable
+private fun EmptyAppList(
+    query: String,
+    activeLetter: Char?,
+    palette: ColorPalette,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = null,
+            tint = palette.textSecondary.copy(alpha = 0.4f),
+            modifier = Modifier.size(40.dp),
+        )
+        Text(
+            text = when {
+                query.isNotBlank() -> "Sin resultados para “$query”"
+                activeLetter != null -> "Ninguna app empieza con $activeLetter"
+                else -> "No hay apps para mostrar"
+            },
+            color = palette.textPrimary,
+            style = MaterialTheme.typography.titleSmall,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        Text(
+            text = if (query.isNotBlank()) {
+                "Revisa la ortografía, o comprueba si la app está oculta en Ajustes."
+            } else {
+                "Puedes volver a mostrar apps ocultas desde Ajustes."
+            },
+            color = palette.textSecondary,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
         )
     }
 }

@@ -40,6 +40,7 @@ import com.staticum.niagaralauncher.ui.settings.AppPickerScreen
 import com.staticum.niagaralauncher.ui.settings.ColorPickerScreen
 import com.staticum.niagaralauncher.ui.settings.SettingsScreen
 import com.staticum.niagaralauncher.ui.settings.SettingsViewModel
+import com.staticum.niagaralauncher.ui.settings.SoundPickerScreen
 import com.staticum.niagaralauncher.ui.theme.LauncherTheme
 import com.staticum.niagaralauncher.update.UpdateUiState
 import com.staticum.niagaralauncher.update.UpdateViewModel
@@ -50,7 +51,9 @@ import com.staticum.niagaralauncher.util.isDefaultLauncher
 import com.staticum.niagaralauncher.widget.WidgetHostProvider
 import com.staticum.niagaralauncher.widget.WidgetPickerScreen
 
-private enum class Screen { HOME, SETTINGS, WIDGET_PICKER, FAVORITES_PICKER, HIDDEN_PICKER, COLOR_PICKER }
+private enum class Screen {
+    HOME, SETTINGS, WIDGET_PICKER, FAVORITES_PICKER, HIDDEN_PICKER, COLOR_PICKER, SOUND_PICKER
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -167,8 +170,6 @@ class MainActivity : ComponentActivity() {
                                 onIconSizeChange = settingsViewModel::setIconSizeFactor,
                                 onMonochromeChange = settingsViewModel::setMonochromeIcons,
                                 onScreenTintModeChange = settingsViewModel::setScreenTintMode,
-                                onSoundSelected = settingsViewModel::setSoundId,
-                                onSoundVolumeChange = settingsViewModel::setSoundVolume,
                                 onIndexWaveOffsetChange = settingsViewModel::setIndexWaveOffset,
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
@@ -190,6 +191,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenFavoritesPicker = { screenState.value = Screen.FAVORITES_PICKER },
                                 onOpenHiddenPicker = { screenState.value = Screen.HIDDEN_PICKER },
                                 onOpenColorPicker = { screenState.value = Screen.COLOR_PICKER },
+                                onOpenSoundPicker = { screenState.value = Screen.SOUND_PICKER },
                                 onShareCrashLog = { shareCrashLog() },
                                 onClearCrashLog = { CrashLogger.clear(this@MainActivity) },
                                 isDefaultLauncher = isDefaultLauncher,
@@ -238,6 +240,15 @@ class MainActivity : ComponentActivity() {
                                 onColorChange = { color ->
                                     settingsViewModel.setCustomAccentColor(color.toArgb())
                                 },
+                                onBack = { screenState.value = Screen.SETTINGS },
+                            )
+
+                            Screen.SOUND_PICKER -> SoundPickerScreen(
+                                palette = homeState.prefs.palette,
+                                selectedId = homeState.prefs.soundId,
+                                volume = homeState.prefs.soundVolume,
+                                onSelect = settingsViewModel::setSoundId,
+                                onVolumeChange = settingsViewModel::setSoundVolume,
                                 onBack = { screenState.value = Screen.SETTINGS },
                             )
                         }
