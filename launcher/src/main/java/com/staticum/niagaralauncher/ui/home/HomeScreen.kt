@@ -87,6 +87,10 @@ import kotlin.math.abs
  * search field and the list was arbitrary - the single most reliable tell that a
  * layout was assembled rather than designed.
  */
+/** How long a letter filter survives with nobody touching anything before the list
+ * releases it and goes back to showing Frecuentes. */
+private const val LETTER_FILTER_TIMEOUT_MS = 10_000L
+
 private val SpaceXs = 4.dp
 private val SpaceSm = 8.dp
 private val SpaceMd = 16.dp
@@ -130,13 +134,35 @@ fun HomeScreen(
 
     var selectedWidgetId by remember { mutableStateOf<Int?>(null) }
 
-    var activeIndexLetter by remember { mutableStateOf<Char?>(null) }
-    LaunchedEffect(activeIndexLetter) {
-        if (activeIndexLetter != null) {
+    // Two separate states on purpose. Before, one value did both jobs, which forced a
+    // choice between "the selection dies with the finger" and "the letter stays
+    // magnified and slid out of the rail for as long as the filter lasts".
+    //  - touchedLetter: only while a finger is on the rail. Drives the wave.
+    //  - filterLetter: the selection that outlives the gesture and filters the list.
+    var touchedLetter by remember { mutableStateOf<Char?>(null) }
+    var filterLetter by remember { mutableStateOf<Char?>(null) }
+
+    // Picking a letter puts you at the top of that letter's block. Since the block is
+    // ordered by usage, the first row is the app you use most with that letter, which
+    // is the whole point of picking it.
+    LaunchedEffect(filterLetter) {
+        if (filterLetter != null) {
             tickPlayer.play()
-            kotlinx.coroutines.delay(500)
-            activeIndexLetter = null
+            listState.scrollToItem(0)
         }
+    }
+
+    // The letter filter isn't a mode you have to dismiss: after a spell of doing
+    // nothing it lets go on its own and Frecuentes comes back. Any interaction -
+    // another letter, a scroll, a finger on the rail - changes a key here and so
+    // restarts the countdown.
+    LaunchedEffect(filterLetter, touchedLetter, listState.isScrollInProgress) {
+        if (filterLetter == null || touchedLetter != null || listState.isScrollInProgress) {
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(LETTER_FILTER_TIMEOUT_MS)
+        filterLetter = null
+        listState.scrollToItem(0)
     }
 
     // A short one-shot per index change while scrolling the app list.
@@ -150,10 +176,10 @@ fun HomeScreen(
     val availableLetters = remember(state.visibleApps) {
         state.visibleApps.mapNotNullTo(sortedSetOf()) { it.label.firstOrNull()?.uppercaseChar() }
     }
-    // While a letter is actively touched on the index bar, narrow the list down
-    // to just that letter's apps (Niagara-style), instead of merely scrolling to it.
-    val displayedApps = remember(state.visibleApps, activeIndexLetter, state.localScores, state.systemScores) {
-        val letter = activeIndexLetter
+    // Picking a letter narrows the list to that letter's apps (Niagara-style) rather
+    // than merely scrolling to it, and holds until the inactivity timeout above.
+    val displayedApps = remember(state.visibleApps, filterLetter, state.localScores, state.systemScores) {
+        val letter = filterLetter
         if (letter == null) {
             state.visibleApps
         } else {
@@ -169,7 +195,7 @@ fun HomeScreen(
 
     // Suggestions must not get in the way of an explicit intent: while searching or
     // while a letter is being filtered, the user already knows what they are after.
-    val frequentApps = if (state.query.isBlank() && activeIndexLetter == null) {
+    val frequentApps = if (state.query.isBlank() && filterLetter == null) {
         state.frequentApps
     } else {
         emptyList()
@@ -179,10 +205,16 @@ fun HomeScreen(
     // scrolled normally (not just while dragging on the bar itself), so the bar
     // always shows roughly where in the alphabet the visible apps currently are.
     var scrollHighlightLetter by remember { mutableStateOf<Char?>(null) }
+    // Derived from the first visible item's *key*, not its position: the list now
+    // starts with the Frecuentes items, so an index into the LazyColumn is no longer
+    // an index into displayedApps and highlighted a letter further down the alphabet.
+    // Frecuentes keys are prefixed, so they match no app and simply highlight nothing.
     LaunchedEffect(listState, displayedApps) {
-        snapshotFlow { listState.firstVisibleItemIndex }
-            .collect { index ->
-                scrollHighlightLetter = displayedApps.getOrNull(index)?.label?.firstOrNull()?.uppercaseChar()
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key }
+            .collect { key ->
+                scrollHighlightLetter = displayedApps
+                    .firstOrNull { it.key == key }
+                    ?.label?.firstOrNull()?.uppercaseChar()
             }
     }
 
@@ -191,7 +223,7 @@ fun HomeScreen(
             .fillMaxSize()
             .background(backgroundColor)
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { selectedWidgetId = null })
+                detectTapGestures(onTap = { selectedWidgetId = null; filterLetter = null })
             }
             .pointerInput(state.prefs.gestureFavorites) {
                 detectDragGestures(
@@ -309,7 +341,7 @@ fun HomeScreen(
 
             SearchField(
                 query = state.query,
-                onQueryChange = { selectedWidgetId = null; onQueryChange(it) },
+                onQueryChange = { selectedWidgetId = null; filterLetter = null; onQueryChange(it) },
                 palette = palette,
             )
 
@@ -378,7 +410,7 @@ fun HomeScreen(
                 if (displayedApps.isEmpty()) {
                     EmptyAppList(
                         query = state.query,
-                        activeLetter = activeIndexLetter,
+                        activeLetter = filterLetter,
                         palette = palette,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp),
                     )
@@ -396,10 +428,14 @@ fun HomeScreen(
             // list happens to be scrolled to is only highlighted in place. Merging
             // them made a passively-highlighted letter jump to 2x and slide 24dp out
             // of the rail, which read as a rendering glitch floating over the list.
-            touchedLetter = activeIndexLetter,
+            touchedLetter = touchedLetter,
             scrollLetter = scrollHighlightLetter,
             onLetterActive = { letter ->
-                activeIndexLetter = letter?.let { nearestAvailableLetter(it, availableLetters) }
+                val snapped = letter?.let { nearestAvailableLetter(it, availableLetters) }
+                touchedLetter = snapped
+                // Only a real letter updates the filter; releasing the rail reports
+                // null and must leave the selection standing - the timeout owns it.
+                if (snapped != null) filterLetter = snapped
             },
             waveOffsetDp = state.prefs.indexWaveOffsetDp,
             palette = palette,
