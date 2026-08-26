@@ -1143,8 +1143,15 @@ private fun AlphabetIndexBar(
 
     Column(
         modifier = modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
-            .background(palette.textPrimary.copy(alpha = trackAlpha))
+            // background(color, shape) paints a rounded track WITHOUT clipping its
+            // children. Using clip() here (as v38 did) confined the letters to the
+            // rail's 36dp width, so a magnified letter sliding left was cut off and
+            // the wave appeared to only exist for glyphs hugging the right edge -
+            // the whole point of the wave is that it overflows onto the list.
+            .background(
+                color = palette.textPrimary.copy(alpha = trackAlpha),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+            )
             .onGloballyPositioned { heightPx = it.size.height.toFloat() }
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { offset ->
