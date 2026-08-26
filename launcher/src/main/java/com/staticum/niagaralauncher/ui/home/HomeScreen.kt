@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -76,6 +78,20 @@ import com.staticum.niagaralauncher.widget.WidgetEntry
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlin.math.abs
+
+/**
+ * One spacing scale for the whole home screen.
+ *
+ * Every block used to carry its own ad-hoc padding (4/8/12/14/20dp picked per
+ * component), so the vertical rhythm between the quote, the widgets, the dock, the
+ * search field and the list was arbitrary - the single most reliable tell that a
+ * layout was assembled rather than designed.
+ */
+private val SpaceXs = 4.dp
+private val SpaceSm = 8.dp
+private val SpaceMd = 16.dp
+private val SpaceLg = 20.dp
+private val SpaceXl = 28.dp
 
 @Composable
 fun HomeScreen(
@@ -185,21 +201,40 @@ fun HomeScreen(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding(),
+                .statusBarsPadding()
+                // Without this the last app row and the tail of the A-Z rail render
+                // underneath the system navigation bar and get clipped.
+                .navigationBarsPadding(),
         ) {
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .padding(horizontal = 20.dp),
+                .padding(start = SpaceLg, end = SpaceSm),
         ) {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                IconButton(onClick = { selectedWidgetId = null; onOpenSettings() }) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Ajustes", tint = palette.textSecondary)
+            // A 40dp bar rather than a 48dp IconButton inside a full-width Box: the
+            // old version reserved a whole header's worth of height to hold one gear.
+            Box(
+                modifier = Modifier.fillMaxWidth().height(40.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .clickable { selectedWidgetId = null; onOpenSettings() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Settings,
+                        contentDescription = "Ajustes",
+                        tint = palette.textSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
             }
 
-            ZenQuoteBanner(textColor = palette.textSecondary)
+            ZenQuoteBanner(palette = palette)
 
             if (!isDefaultLauncher) {
                 Text(
@@ -251,7 +286,7 @@ fun HomeScreen(
                     apps = favoriteApps,
                     iconSizeFactor = state.prefs.iconSizeFactor,
                     monochrome = state.prefs.monochromeIcons,
-                    accentColor = palette.accent,
+                    palette = palette,
                     onLaunchApp = onLaunchApp,
                 )
             }
@@ -301,17 +336,22 @@ fun HomeScreen(
         // always available and never get squeezed out by other content above.
         AlphabetIndexBar(
             availableLetters = availableLetters,
-            activeLetter = activeIndexLetter ?: scrollHighlightLetter,
+            // Two distinct states, deliberately not merged: the letter under your
+            // finger gets the full magnify-and-slide treatment, while the letter the
+            // list happens to be scrolled to is only highlighted in place. Merging
+            // them made a passively-highlighted letter jump to 2x and slide 24dp out
+            // of the rail, which read as a rendering glitch floating over the list.
+            touchedLetter = activeIndexLetter,
+            scrollLetter = scrollHighlightLetter,
             onLetterActive = { letter ->
                 activeIndexLetter = letter?.let { nearestAvailableLetter(it, availableLetters) }
             },
             waveOffsetDp = state.prefs.indexWaveOffsetDp,
-            accentColor = palette.accent,
-            textColor = palette.textSecondary,
+            palette = palette,
             modifier = Modifier
                 .fillMaxHeight()
-                .width(28.dp)
-                .padding(end = 4.dp),
+                .width(36.dp)
+                .padding(end = SpaceSm, top = SpaceSm, bottom = SpaceSm),
         )
         }
     }
@@ -846,11 +886,15 @@ private fun WidgetEditToolbar(
             )
         }
 
+        // Destructive and primary actions must not look identical to each other or
+        // to "Mover": remove reads in an error tone, done reads as the filled
+        // primary. Previously all three were the same neutral label.
         WidgetToolbarAction(
             icon = Icons.Filled.Delete,
             label = "Quitar",
             palette = palette,
             onClick = onRemove,
+            destructive = true,
         )
 
         WidgetToolbarAction(
@@ -858,7 +902,7 @@ private fun WidgetEditToolbar(
             label = "Listo",
             palette = palette,
             onClick = onDone,
-            highlighted = true,
+            filled = true,
         )
     }
 }
@@ -870,11 +914,20 @@ private fun WidgetToolbarAction(
     palette: ColorPalette,
     onClick: () -> Unit,
     highlighted: Boolean = false,
+    destructive: Boolean = false,
+    filled: Boolean = false,
 ) {
-    val tint = if (highlighted) palette.accent else palette.textSecondary
+    val danger = androidx.compose.ui.graphics.Color(0xFFE5484D)
+    val tint = when {
+        filled -> palette.background
+        destructive -> danger
+        highlighted -> palette.accent
+        else -> palette.textSecondary
+    }
     Row(
         modifier = Modifier
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .then(if (filled) Modifier.background(palette.accent) else Modifier)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -904,7 +957,7 @@ private fun ResizeKnob(palette: ColorPalette) {
 }
 
 @Composable
-private fun ZenQuoteBanner(textColor: androidx.compose.ui.graphics.Color) {
+private fun ZenQuoteBanner(palette: ColorPalette) {
     val quote = remember { ZenQuotes.random() }
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
@@ -917,14 +970,53 @@ private fun ZenQuoteBanner(textColor: androidx.compose.ui.graphics.Color) {
                 initialOffsetY = { -it / 3 },
             ),
     ) {
+        // Lighter weight and a touch of letter spacing so the quote reads as a quiet
+        // epigraph rather than competing with the widgets below it for attention.
         Text(
             text = quote,
-            color = textColor,
-            style = MaterialTheme.typography.titleMedium,
+            color = palette.textSecondary,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
+            letterSpacing = 0.3.sp,
+            lineHeight = 22.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 14.dp),
+                .padding(start = SpaceMd, end = SpaceMd, top = SpaceXs, bottom = SpaceXl),
+        )
+    }
+}
+
+/**
+ * A uniform frame for an app icon.
+ *
+ * Launcher icons arrive in wildly different shapes - some are full-bleed rounded
+ * squares with their own background, some are transparent glyphs, some are circles.
+ * Rendered raw, a list of them has no shared silhouette and reads as a pile of
+ * assets. Giving every icon the same footprint (and insetting the artwork slightly)
+ * makes the column line up without clipping anyone's artwork.
+ */
+@Composable
+private fun AppIcon(
+    app: AppInfo,
+    sizeDp: androidx.compose.ui.unit.Dp,
+    monochrome: Boolean,
+    accentColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val px = with(density) { sizeDp.toPx() }.toInt().coerceAtLeast(1)
+    Box(
+        modifier = modifier.size(sizeDp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            bitmap = app.icon.toBitmap(width = px, height = px).asImageBitmap(),
+            contentDescription = null,
+            colorFilter = if (monochrome) ColorFilter.tint(accentColor) else null,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(sizeDp * 0.24f)),
         )
     }
 }
@@ -934,29 +1026,39 @@ private fun FavoritesRow(
     apps: List<AppInfo>,
     iconSizeFactor: Float,
     monochrome: Boolean,
-    accentColor: androidx.compose.ui.graphics.Color,
+    palette: ColorPalette,
     onLaunchApp: (AppInfo) -> Unit,
 ) {
-    val density = LocalDensity.current
-    val baseSizeDp = 40.dp
-    val iconSize = baseSizeDp * iconSizeFactor
+    val iconSize = 44.dp * iconSizeFactor
 
+    // Reads as a dock rather than two icons stranded against the left margin: the
+    // row sits on its own surface, is centred, and each icon gets a real 48dp+ touch
+    // target instead of only the bitmap's own bounds.
     androidx.compose.foundation.lazy.LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = SpaceXl)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+            .background(palette.textPrimary.copy(alpha = 0.05f))
+            .padding(horizontal = SpaceSm, vertical = SpaceSm),
+        horizontalArrangement = Arrangement.spacedBy(SpaceSm, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         items(apps, key = { "fav_${it.key}" }) { app ->
-            Image(
-                bitmap = app.icon.toBitmap(
-                    width = with(density) { iconSize.toPx() }.toInt().coerceAtLeast(1),
-                    height = with(density) { iconSize.toPx() }.toInt().coerceAtLeast(1),
-                ).asImageBitmap(),
-                contentDescription = app.label,
-                colorFilter = if (monochrome) ColorFilter.tint(accentColor) else null,
+            Box(
                 modifier = Modifier
-                    .size(iconSize)
-                    .clickable { onLaunchApp(app) },
-            )
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .clickable { onLaunchApp(app) }
+                    .padding(SpaceSm),
+                contentAlignment = Alignment.Center,
+            ) {
+                AppIcon(
+                    app = app,
+                    sizeDp = iconSize,
+                    monochrome = monochrome,
+                    accentColor = palette.accent,
+                )
+            }
         }
     }
 }
@@ -976,13 +1078,15 @@ private const val ACTIVE_LETTER_SCALE = 2.0f
 @Composable
 private fun AlphabetIndexBar(
     availableLetters: Set<Char>,
-    activeLetter: Char?,
+    touchedLetter: Char?,
+    scrollLetter: Char?,
     onLetterActive: (Char?) -> Unit,
     waveOffsetDp: Float,
-    accentColor: androidx.compose.ui.graphics.Color,
-    textColor: androidx.compose.ui.graphics.Color,
+    palette: ColorPalette,
     modifier: Modifier = Modifier,
 ) {
+    val accentColor = palette.accent
+    val textColor = palette.textSecondary
     var heightPx by remember { mutableFloatStateOf(0f) }
     // Continuous fractional index under the finger, independent of activeLetter (which
     // snaps to the nearest available letter) - this is what drives the dock-style
@@ -1001,13 +1105,17 @@ private fun AlphabetIndexBar(
     // so all 26 letters always fit without clipping/overlap - independent of screen
     // size or how much vertical space other content above leaves for this bar - while
     // never growing past the normal design size on tall screens.
-    val designFontSize = MaterialTheme.typography.labelSmall.fontSize
+    // Auto-fit still caps the size so 26 letters never overlap, but a floor keeps
+    // them legible: spread over a full phone height the previous formula left ~11sp
+    // glyphs separated by ~24dp of nothing, which read as scattered rather than as
+    // a deliberate rail.
+    val designFontSize = MaterialTheme.typography.labelMedium.fontSize
     val baseFontSize = if (heightPx <= 0f) {
         designFontSize
     } else {
         val slotHeightPx = heightPx / ALPHABET.size
-        val autoSizeValue = with(density) { (slotHeightPx * 0.72f).toSp().value }
-        kotlin.math.min(designFontSize.value, autoSizeValue).sp
+        val autoSizeValue = with(density) { (slotHeightPx * 0.62f).toSp().value }
+        kotlin.math.min(designFontSize.value, autoSizeValue).coerceAtLeast(9f).sp
     }
 
     fun indexAt(y: Float): Float? {
@@ -1024,8 +1132,19 @@ private fun AlphabetIndexBar(
         lastHapticLetter = letter
     }
 
+    // A faint track appears only while scrubbing, so at rest the rail stays as quiet
+    // as it is now, but the moment you touch it the interactive area becomes visible
+    // instead of leaving you guessing where the hit region is.
+    val trackAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (touchIndex != null) 0.07f else 0f,
+        animationSpec = tween(180),
+        label = "indexTrack",
+    )
+
     Column(
         modifier = modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+            .background(palette.textPrimary.copy(alpha = trackAlpha))
             .onGloballyPositioned { heightPx = it.size.height.toFloat() }
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { offset ->
@@ -1060,15 +1179,19 @@ private fun AlphabetIndexBar(
         horizontalAlignment = Alignment.End,
     ) {
         ALPHABET.forEachIndexed { index, letter ->
-            val isActive = letter == activeLetter
+            // Being under the finger and merely being where the list is scrolled to
+            // are different states and must look different. Only the touched letter
+            // may scale and slide out of the rail; the scroll position is shown in
+            // place with colour and weight alone. Conflating the two made a letter
+            // nobody was touching jump to 2x and slide 24dp left, hanging over the
+            // app list like a rendering artifact.
+            val isTouched = touchedLetter != null && letter == touchedLetter
+            val isScrolledTo = !isTouched && touchedLetter == null && letter == scrollLetter
             val waveScale = touchIndex?.let { t ->
                 val distance = abs(t - index)
                 1f + MAGNIFY_BUMP * kotlin.math.exp(-(distance * distance) / (2 * MAGNIFY_SIGMA * MAGNIFY_SIGMA))
             } ?: 1f
-            // The active (snapped-to) letter always stands out clearly on its own,
-            // on top of whatever the wave already gives it - this replaces the old
-            // centered circle overlay as the "which letter am I on" indicator.
-            val targetScale = if (isActive) maxOf(waveScale, ACTIVE_LETTER_SCALE) else waveScale
+            val targetScale = if (isTouched) maxOf(waveScale, ACTIVE_LETTER_SCALE) else waveScale
             val scale by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = targetScale,
                 animationSpec = androidx.compose.animation.core.spring(
@@ -1080,15 +1203,25 @@ private fun AlphabetIndexBar(
             Text(
                 text = letter.toString(),
                 color = when {
-                    isActive -> accentColor
+                    isTouched -> accentColor
+                    isScrolledTo -> accentColor
                     letter in availableLetters -> textColor
-                    else -> textColor.copy(alpha = 0.25f)
+                    else -> textColor.copy(alpha = 0.22f)
                 },
                 fontSize = baseFontSize * scale,
-                fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else null,
+                fontWeight = if (isTouched || isScrolledTo) {
+                    androidx.compose.ui.text.font.FontWeight.Bold
+                } else {
+                    null
+                },
                 modifier = Modifier
-                    .padding(end = if (isActive) 4.dp else 0.dp)
-                    .offset(x = waveOffsetDp.dp * -(scale - 1f)),
+                    .padding(end = if (isTouched) SpaceXs else 0.dp)
+                    // Gated on there being a finger on the rail at all - not on this
+                    // being the active letter - so the neighbours still slide left
+                    // with the wave, while nothing shifts when nobody is scrubbing.
+                    .offset(
+                        x = if (touchIndex != null) waveOffsetDp.dp * -(scale - 1f) else 0.dp,
+                    ),
             )
         }
     }
@@ -1114,14 +1247,18 @@ private fun SearchField(
         label = "searchBorder",
     )
 
+    // Deliberately *not* a floating pill: users often keep a Google search widget
+    // right above this, and two identical pills 8dp apart read as one control
+    // duplicated. This sits flush as a list header - flat, full-bleed, separated by
+    // a rule - so its role (filter the list below) is legible at a glance.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
-            .background(palette.textPrimary.copy(alpha = 0.06f))
-            .border(1.dp, borderColor, androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
-            .padding(start = 14.dp, end = 6.dp),
+            .padding(bottom = SpaceSm)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(palette.textPrimary.copy(alpha = if (active) 0.07f else 0.0f))
+            .border(1.dp, borderColor, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .padding(start = SpaceMd, end = SpaceXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -1218,35 +1355,35 @@ private fun AppRow(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val density = LocalDensity.current
-    val baseSizeDp = 28.dp
-    val iconSize = baseSizeDp * iconSizeFactor
+    val iconSize = 32.dp * iconSizeFactor
 
     androidx.compose.foundation.layout.Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
             .pointerInput(app.key) {
                 detectTapAndLongPress(onTap = onClick, onLongPress = onLongClick)
             }
-            .padding(vertical = 10.dp),
+            // 48dp minimum row height: the old 10dp vertical padding around a 28dp
+            // icon left rows below the minimum comfortable touch target.
+            .heightIn(min = 52.dp)
+            .padding(horizontal = SpaceSm, vertical = SpaceSm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Image(
-            bitmap = app.icon.toBitmap(
-                width = with(density) { iconSize.toPx() }.toInt().coerceAtLeast(1),
-                height = with(density) { iconSize.toPx() }.toInt().coerceAtLeast(1),
-            ).asImageBitmap(),
-            contentDescription = null,
-            colorFilter = if (monochrome) ColorFilter.tint(accentColor) else null,
-            modifier = Modifier.size(iconSize),
+        AppIcon(
+            app = app,
+            sizeDp = iconSize,
+            monochrome = monochrome,
+            accentColor = accentColor,
         )
         Text(
             text = app.label,
             color = textColor,
             style = MaterialTheme.typography.bodyLarge,
+            letterSpacing = 0.1.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 16.dp),
+            modifier = Modifier.padding(start = SpaceMd),
         )
     }
 }
