@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.ScreenTintMode
+import com.staticum.niagaralauncher.data.WidgetBackground
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.update.UpdateUiState
 import com.staticum.niagaralauncher.util.SoundOption
@@ -88,6 +89,7 @@ fun SettingsScreen(
     isDefaultLauncher: Boolean,
     onChangeDefaultLauncher: () -> Unit,
     onAmbientLockChange: (Boolean) -> Unit,
+    onWidgetBackgroundChange: (WidgetBackground) -> Unit,
 ) {
     val palette = state.prefs.palette
 
@@ -283,6 +285,41 @@ fun SettingsScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 16.dp),
                     )
+
+                    SettingsCardDivider(palette)
+                    Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 18.dp)) {
+                        Text(
+                            text = "Fondo del widget",
+                            color = palette.textPrimary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            text = "Muchos widgets son transparentes y esperan que el launcher aporte contraste. Añade un fondo si no se leen bien sobre tu fondo de pantalla.",
+                            color = palette.textSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 3.dp, bottom = 14.dp),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            WidgetBackground.entries.forEach { option ->
+                                WidgetBackgroundOption(
+                                    label = when (option) {
+                                        WidgetBackground.NONE -> "Ninguno"
+                                        WidgetBackground.SUBTLE -> "Sutil"
+                                        WidgetBackground.SOLID -> "Sólido"
+                                    },
+                                    selected = state.prefs.widgetBackground == option,
+                                    fill = when (option) {
+                                        WidgetBackground.NONE -> androidx.compose.ui.graphics.Color.Transparent
+                                        WidgetBackground.SUBTLE -> palette.textPrimary.copy(alpha = 0.07f)
+                                        WidgetBackground.SOLID -> palette.surface
+                                    },
+                                    palette = palette,
+                                    onClick = { onWidgetBackgroundChange(option) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -373,6 +410,53 @@ fun SettingsScreen(
 
             item { Box(modifier = Modifier.size(40.dp)) }
         }
+    }
+}
+
+@Composable
+private fun WidgetBackgroundOption(
+    label: String,
+    selected: Boolean,
+    fill: androidx.compose.ui.graphics.Color,
+    palette: ColorPalette,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(fill)
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) palette.accent else palette.textPrimary.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(10.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = palette.accent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        Text(
+            text = label,
+            color = if (selected) palette.accent else palette.textSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 

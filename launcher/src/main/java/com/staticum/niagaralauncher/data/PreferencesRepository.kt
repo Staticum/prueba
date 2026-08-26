@@ -24,6 +24,12 @@ enum class SwipeDirection { UP, DOWN, LEFT, RIGHT }
  * palette's accent color. */
 enum class ScreenTintMode { NONE, GRAYSCALE, COLOR }
 
+/** How each widget is framed on the home screen. Many widgets draw on a fully
+ * transparent background and assume the launcher gives them contrast; over a photo
+ * wallpaper (or even a light palette) they can become unreadable, so the user can
+ * opt into a container behind them. */
+enum class WidgetBackground { NONE, SUBTLE, SOLID }
+
 data class LauncherPrefs(
     val paletteId: String = ColorPalette.MATTE_BLACK.id,
     val useWallpaper: Boolean = false,
@@ -36,6 +42,7 @@ data class LauncherPrefs(
     val indexWaveOffsetDp: Float = 24f,
     val customAccentArgb: Int? = null,
     val ambientLockEnabled: Boolean = false,
+    val widgetBackground: WidgetBackground = WidgetBackground.NONE,
     val hiddenApps: Set<String> = emptySet(),
     val gestureFavorites: Map<SwipeDirection, String> = emptyMap(),
     val favoriteAppKeys: List<String> = emptyList(),
@@ -64,6 +71,7 @@ class PreferencesRepository(private val context: Context) {
         val INDEX_WAVE_OFFSET = floatPreferencesKey("index_wave_offset")
         val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
         val AMBIENT_LOCK = booleanPreferencesKey("ambient_lock_enabled")
+        val WIDGET_BACKGROUND = stringPreferencesKey("widget_background")
         val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
         val GESTURE_UP = stringPreferencesKey("gesture_up")
         val GESTURE_DOWN = stringPreferencesKey("gesture_down")
@@ -93,6 +101,9 @@ class PreferencesRepository(private val context: Context) {
             indexWaveOffsetDp = prefs[Keys.INDEX_WAVE_OFFSET] ?: 24f,
             customAccentArgb = prefs[Keys.CUSTOM_ACCENT],
             ambientLockEnabled = prefs[Keys.AMBIENT_LOCK] ?: false,
+            widgetBackground = prefs[Keys.WIDGET_BACKGROUND]?.let { raw ->
+                runCatching { WidgetBackground.valueOf(raw) }.getOrNull()
+            } ?: WidgetBackground.NONE,
             hiddenApps = prefs[Keys.HIDDEN_APPS] ?: emptySet(),
             gestureFavorites = gestures,
             favoriteAppKeys = prefs[Keys.FAVORITE_APPS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -146,6 +157,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setAmbientLockEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.AMBIENT_LOCK] = enabled }
+    }
+
+    suspend fun setWidgetBackground(background: WidgetBackground) {
+        context.dataStore.edit { it[Keys.WIDGET_BACKGROUND] = background.name }
     }
 
     suspend fun toggleHiddenApp(appKey: String, hidden: Boolean) {

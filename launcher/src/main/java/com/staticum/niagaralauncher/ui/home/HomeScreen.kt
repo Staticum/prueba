@@ -10,7 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +28,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -41,6 +45,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
 import com.staticum.niagaralauncher.data.SwipeDirection
+import com.staticum.niagaralauncher.data.WidgetBackground
 import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
@@ -86,6 +92,7 @@ fun HomeScreen(
     onResizeWidget: (Int, Int) -> Unit,
     onResizeWidgetWidth: (Int, Int) -> Unit,
     onMoveWidget: (Int, Int) -> Unit,
+    onRemoveWidget: (Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
 ) {
     val palette = state.prefs.palette
@@ -222,10 +229,16 @@ fun HomeScreen(
                 WidgetArea(
                     widgets = widgets,
                     selectedWidgetId = selectedWidgetId,
+                    widgetBackground = state.prefs.widgetBackground,
+                    palette = palette,
                     onSelectWidget = { selectedWidgetId = it },
                     onResizeWidget = onResizeWidget,
                     onResizeWidgetWidth = onResizeWidgetWidth,
                     onMoveWidget = onMoveWidget,
+                    onRemoveWidget = { id ->
+                        selectedWidgetId = null
+                        onRemoveWidget(id)
+                    },
                     onRemoveInvalidWidget = onRemoveInvalidWidget,
                 )
             }
@@ -303,14 +316,15 @@ fun HomeScreen(
         }
     }
 }
-
 private const val MIN_WIDGET_HEIGHT_DP = 60
-private const val MAX_WIDGET_HEIGHT_DP = 400
+private const val MAX_WIDGET_HEIGHT_DP = 520
 private const val MIN_WIDGET_WIDTH_PERCENT = 25
 private const val MAX_WIDGET_WIDTH_PERCENT = 100
+
 /** Snap points for widget width, so widgets combine cleanly into rows of 2, 3 or 4
  * (25/33/50/66/75/100) instead of any arbitrary drag position. */
 private val WIDTH_STEPS = listOf(25, 33, 50, 66, 75, 100)
+
 /** A row accepts more widgets while their combined width stays within this budget
  * (some slack over 100 absorbs rounding, e.g. three 33% widgets = 99). */
 private const val ROW_WIDTH_BUDGET_PERCENT = 101
@@ -319,14 +333,87 @@ private const val MAX_WIDGETS_PER_ROW = 4
 private fun snapWidthPercent(raw: Int): Int =
     WIDTH_STEPS.minByOrNull { kotlin.math.abs(it - raw) } ?: MAX_WIDGET_WIDTH_PERCENT
 
+/**
+ * The size limits a given provider actually declares, as opposed to the app-wide
+ * defaults.
+ *
+ * These were being ignored entirely: every widget got both resize handles and a flat
+ * 60dp floor, including widgets that declare `RESIZE_NONE` (they can't be resized at
+ * all) or a legitimately larger minimum. Dragging those below what they support is
+ * exactly what produces stretched or clipped renders.
+ *
+ * `allowsForce` exists because the declared minimum is sometimes plainly wrong - the
+ * system digital clock declares a minHeight far larger than what it needs - so the
+ * user can deliberately override it from the edit toolbar.
+ */
+private data class WidgetSizeLimits(
+    val canResizeWidth: Boolean,
+    val canResizeHeight: Boolean,
+    val minHeightDp: Int,
+    val maxHeightDp: Int,
+    val minWidthPercent: Int,
+)
+
+private fun sizeLimitsFor(
+    providerInfo: android.appwidget.AppWidgetProviderInfo,
+    fullWidthDp: Int,
+    forced: Boolean,
+): WidgetSizeLimits {
+    if (forced) {
+        return WidgetSizeLimits(
+            canResizeWidth = true,
+            canResizeHeight = true,
+            minHeightDp = MIN_WIDGET_HEIGHT_DP,
+            maxHeightDp = MAX_WIDGET_HEIGHT_DP,
+            minWidthPercent = MIN_WIDGET_WIDTH_PERCENT,
+        )
+    }
+    val mode = providerInfo.resizeMode
+    val horizontal = mode and android.appwidget.AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0
+    val vertical = mode and android.appwidget.AppWidgetProviderInfo.RESIZE_VERTICAL != 0
+
+    // minResizeHeight is what the widget says it can shrink to; minHeight is its
+    // preferred size. Prefer the former and fall back to the latter.
+    val declaredMinHeight = providerInfo.minResizeHeight.takeIf { it > 0 }
+        ?: providerInfo.minHeight
+    val declaredMaxHeight = if (android.os.Build.VERSION.SDK_INT >= 31) {
+        providerInfo.maxResizeHeight.takeIf { it > 0 }
+    } else {
+        null
+    }
+    val declaredMinWidth = providerInfo.minResizeWidth.takeIf { it > 0 }
+        ?: providerInfo.minWidth
+
+    val minH = declaredMinHeight.coerceIn(MIN_WIDGET_HEIGHT_DP, MAX_WIDGET_HEIGHT_DP)
+    val maxH = (declaredMaxHeight ?: MAX_WIDGET_HEIGHT_DP)
+        .coerceIn(minH, MAX_WIDGET_HEIGHT_DP)
+    val minPercent = if (fullWidthDp > 0) {
+        snapWidthPercent((declaredMinWidth * 100 / fullWidthDp))
+            .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
+    } else {
+        MIN_WIDGET_WIDTH_PERCENT
+    }
+
+    return WidgetSizeLimits(
+        canResizeWidth = horizontal,
+        canResizeHeight = vertical,
+        minHeightDp = minH,
+        maxHeightDp = maxH,
+        minWidthPercent = minPercent,
+    )
+}
+
 @Composable
 private fun WidgetArea(
     widgets: List<WidgetEntry>,
     selectedWidgetId: Int?,
+    widgetBackground: WidgetBackground,
+    palette: ColorPalette,
     onSelectWidget: (Int?) -> Unit,
     onResizeWidget: (Int, Int) -> Unit,
     onResizeWidgetWidth: (Int, Int) -> Unit,
     onMoveWidget: (Int, Int) -> Unit,
+    onRemoveWidget: (Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -335,16 +422,20 @@ private fun WidgetArea(
 
     // Pack widgets into rows greedily: keep adding the next widget to the current
     // row while it still fits under the width budget and the row isn't full yet -
-    // this lets 2, 3 or 4 narrower widgets share a row in any combination, not just
-    // fixed pairs, while still being a simple order-preserving stack of rows that
-    // the user configures just by dragging a selected widget's frame handles.
+    // this lets 2, 3 or 4 narrower widgets share a row in any combination. The user
+    // controls the packing indirectly, by setting each widget's width and by dragging
+    // it left/right/up/down with the move handle, which reorders the flat list that
+    // this derives from.
     val rows = remember(widgets) {
         val result = mutableListOf<List<WidgetEntry>>()
         var row = mutableListOf<WidgetEntry>()
         var rowWidth = 0
         for (entry in widgets) {
-            val width = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT).coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
-            val fitsRow = row.isNotEmpty() && row.size < MAX_WIDGETS_PER_ROW && rowWidth + width <= ROW_WIDTH_BUDGET_PERCENT
+            val width = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
+                .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
+            val fitsRow = row.isNotEmpty() &&
+                row.size < MAX_WIDGETS_PER_ROW &&
+                rowWidth + width <= ROW_WIDTH_BUDGET_PERCENT
             if (fitsRow) {
                 row.add(entry)
                 rowWidth += width
@@ -361,6 +452,7 @@ private fun WidgetArea(
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val fullWidthPx = with(density) { maxWidth.toPx() }
+        val fullWidthDp = maxWidth.value.toInt()
 
         Column(
             modifier = Modifier
@@ -369,55 +461,53 @@ private fun WidgetArea(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             rows.forEach { row ->
-                // Keyed by entry.id (not just list position) so a widget keeps its
-                // Compose identity - and crucially, any in-progress drag gesture -
-                // as it moves to a new position/row grouping during reordering.
-                // Without this, Compose would tear down and recreate the composable
-                // mid-drag as soon as the first reorder step changed the row layout.
-                if (row.size == 1) {
-                    val entry = row[0]
-                    val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
-                    androidx.compose.runtime.key(entry.id) {
-                        if (providerInfo == null) {
-                            OrphanedWidgetRow(entry, onRemoveInvalidWidget)
-                        } else {
-                            WidgetCell(
-                                entry = entry,
-                                providerInfo = providerInfo,
-                                fullWidthPx = fullWidthPx,
-                                isSelected = entry.id == selectedWidgetId,
-                                onSelect = { onSelectWidget(entry.id) },
-                                onResizeWidget = onResizeWidget,
-                                onResizeWidgetWidth = onResizeWidgetWidth,
-                                onMoveWidget = onMoveWidget,
-                                standalone = true,
-                            )
-                        }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        row.forEach { entry ->
-                            val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
-                            androidx.compose.runtime.key(entry.id) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (row.size == 1) Arrangement.Center else Arrangement.spacedBy(8.dp),
+                    // Heights stay independent per widget, so a row is as tall as its
+                    // tallest member and shorter widgets align to the top rather than
+                    // stretching - the ragged bottom edge then reads as intentional
+                    // spacing instead of a layout bug.
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    row.forEach { entry ->
+                        val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
+                        // Keyed by entry.id (not list position) so a widget keeps its
+                        // Compose identity - and any in-progress drag gesture - as it
+                        // moves between rows during reordering.
+                        androidx.compose.runtime.key(entry.id) {
+                            val cellModifier = if (row.size == 1) {
+                                Modifier.fillMaxWidth(
+                                    (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
+                                        .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT) / 100f,
+                                )
+                            } else {
+                                Modifier.weight(1f)
+                            }
                             if (providerInfo == null) {
-                                Box(modifier = Modifier.weight(1f)) { OrphanedWidgetRow(entry, onRemoveInvalidWidget) }
+                                OrphanedWidgetCard(
+                                    entry = entry,
+                                    palette = palette,
+                                    onRemove = onRemoveInvalidWidget,
+                                    modifier = cellModifier,
+                                )
                             } else {
                                 WidgetCell(
                                     entry = entry,
                                     providerInfo = providerInfo,
                                     fullWidthPx = fullWidthPx,
+                                    fullWidthDp = fullWidthDp,
                                     isSelected = entry.id == selectedWidgetId,
+                                    widgetBackground = widgetBackground,
+                                    palette = palette,
                                     onSelect = { onSelectWidget(entry.id) },
+                                    onDeselect = { onSelectWidget(null) },
                                     onResizeWidget = onResizeWidget,
                                     onResizeWidgetWidth = onResizeWidgetWidth,
                                     onMoveWidget = onMoveWidget,
-                                    standalone = false,
-                                    modifier = Modifier.weight(1f),
+                                    onRemoveWidget = onRemoveWidget,
+                                    modifier = cellModifier,
                                 )
-                            }
                             }
                         }
                     }
@@ -427,82 +517,133 @@ private fun WidgetArea(
     }
 }
 
+/**
+ * A widget whose provider no longer resolves - the owning app was uninstalled, or
+ * reinstalled with a new id.
+ *
+ * This used to be a bare line of text hardcoded to `Color.White.copy(alpha = 0.5f)`,
+ * which is invisible on the light palette, and gave no hint that the whole line was
+ * the tap target.
+ */
 @Composable
-private fun OrphanedWidgetRow(entry: WidgetEntry, onRemoveInvalidWidget: (Int) -> Unit) {
-    Text(
-        text = "Widget no disponible · Toca para quitar",
-        color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f),
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onRemoveInvalidWidget(entry.id) }
-            .padding(vertical = 10.dp),
-    )
+private fun OrphanedWidgetCard(
+    entry: WidgetEntry,
+    palette: ColorPalette,
+    onRemove: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(palette.textPrimary.copy(alpha = 0.06f))
+            .border(
+                1.dp,
+                palette.textSecondary.copy(alpha = 0.25f),
+                androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            )
+            .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Widget no disponible",
+                color = palette.textPrimary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = "La app que lo proveía ya no está instalada",
+                color = palette.textSecondary,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        WidgetToolbarAction(
+            icon = Icons.Filled.Delete,
+            label = "Quitar",
+            palette = palette,
+            onClick = { onRemove(entry.id) },
+        )
+    }
 }
 
-/** One widget host. Normally borderless; long-pressing it shows a frame with two
- * small drag knobs (right edge = width, bottom edge = height) so the size can be
- * set in place, then disappears again on deselect - no permanent bars around widgets.
- * The width knob always measures against the full screen width ([fullWidthPx]),
- * not the widget's own (possibly narrowed) slot, and snaps to [WIDTH_STEPS] so
- * widgets combine cleanly into rows of 2-4. Once selected, a "Mover" grip strip
- * appears across the top - drag it up/down to reorder the widget. It's a separate
- * touch target from the widget's own body since some widgets (a digital clock
- * included) are themselves interactive and would otherwise swallow the drag. */
+/**
+ * One widget host.
+ *
+ * Normally borderless. Long-pressing selects it, which shows a frame plus small
+ * corner knobs and a floating toolbar *below* the widget.
+ *
+ * The controls deliberately do not sit on top of the widget any more: the previous
+ * design stacked three 36dp strips over the content (top/right/bottom), and since the
+ * minimum widget height is 60dp, the top and bottom strips alone covered more than
+ * the whole widget - you were sizing something you couldn't see. The move handle is
+ * still a separate touch target rather than a gesture on the widget body, because
+ * interactive widgets (a digital clock among them) consume touches before Compose's
+ * gesture detection sees them.
+ */
 @Composable
 private fun WidgetCell(
     entry: WidgetEntry,
     providerInfo: android.appwidget.AppWidgetProviderInfo,
     fullWidthPx: Float,
+    fullWidthDp: Int,
     isSelected: Boolean,
+    widgetBackground: WidgetBackground,
+    palette: ColorPalette,
     onSelect: () -> Unit,
+    onDeselect: () -> Unit,
     onResizeWidget: (Int, Int) -> Unit,
     onResizeWidgetWidth: (Int, Int) -> Unit,
     onMoveWidget: (Int, Int) -> Unit,
-    standalone: Boolean,
+    onRemoveWidget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    // The provider's declared minHeight is only used to pick a sensible starting
-    // height for a newly added widget - it's often overstated (some system widgets,
-    // digital clocks in particular, declare a much larger minHeight than what they
-    // actually need to render), so it must NOT become a hard floor the user can't
-    // drag below. MIN_WIDGET_HEIGHT_DP is the only real lower bound.
-    val minHeightDp = MIN_WIDGET_HEIGHT_DP
-    val defaultHeightDp = providerInfo.minHeight.coerceIn(MIN_WIDGET_HEIGHT_DP, MAX_WIDGET_HEIGHT_DP)
-    val heightDp = (entry.heightDp ?: defaultHeightDp).coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
+    val haptics = LocalHapticFeedback.current
+
+    // Overriding the provider's declared minimum is opt-in, per widget, and resets
+    // when the widget is deselected - it's an escape hatch, not a mode.
+    var forceSize by remember(entry.id) { mutableStateOf(false) }
+    val limits = remember(providerInfo, fullWidthDp, forceSize) {
+        sizeLimitsFor(providerInfo, fullWidthDp, forceSize)
+    }
+
+    val defaultHeightDp = providerInfo.minHeight.coerceIn(limits.minHeightDp, limits.maxHeightDp)
+    val heightDp = (entry.heightDp ?: defaultHeightDp).coerceIn(limits.minHeightDp, limits.maxHeightDp)
     val widthPercent = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
-        .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
+        .coerceIn(limits.minWidthPercent, MAX_WIDGET_WIDTH_PERCENT)
 
     var dragWidthPx by remember(entry.id) { mutableFloatStateOf(fullWidthPx * widthPercent / 100f) }
     var dragHeightPx by remember(entry.id) { mutableFloatStateOf(with(density) { heightDp.dp.toPx() }) }
-    // Accumulates vertical drag distance while reordering; every time it crosses the
-    // step threshold the widget swaps one position with its neighbor and the
-    // accumulator resets, so a single continuous drag can move it several spots.
-    var reorderDragPx by remember(entry.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = with(density) { 36.dp.toPx() }
-    // Confirms the long-press registered and each reorder step landed, without
-    // needing to watch the widget move.
-    val haptics = LocalHapticFeedback.current
+    var reorderDragX by remember(entry.id) { mutableFloatStateOf(0f) }
+    var reorderDragY by remember(entry.id) { mutableFloatStateOf(0f) }
+    val reorderStepPx = with(density) { 40.dp.toPx() }
+    var lastSnappedWidth by remember(entry.id) { mutableIntStateOf(widthPercent) }
+    // Shown only while a resize drag is in flight, so you get a number instead of
+    // guessing from the outline.
+    var sizeReadout by remember(entry.id) { mutableStateOf<String?>(null) }
 
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = if (standalone) Arrangement.Center else Arrangement.Start,
-    ) {
+    val containerShape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    val containerColor = when (widgetBackground) {
+        WidgetBackground.NONE -> androidx.compose.ui.graphics.Color.Transparent
+        WidgetBackground.SUBTLE -> palette.textPrimary.copy(alpha = 0.07f)
+        WidgetBackground.SOLID -> palette.surface
+    }
+    val containerPadding = if (widgetBackground == WidgetBackground.NONE) 0.dp else 8.dp
+
+    Column(modifier = modifier) {
         Box(
-            modifier = (if (standalone) Modifier.fillMaxWidth(widthPercent / 100f) else Modifier.fillMaxWidth())
+            modifier = Modifier
+                .fillMaxWidth()
                 .height(heightDp.dp)
+                .clip(containerShape)
+                .background(containerColor)
                 .then(
                     if (isSelected) {
-                        Modifier.border(
-                            width = 2.dp,
-                            color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        )
+                        Modifier.border(2.dp, palette.accent, containerShape)
                     } else {
                         Modifier
                     },
                 )
+                .padding(containerPadding)
                 .pointerInput(entry.id) {
                     detectTapGestures(onLongPress = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -517,104 +658,247 @@ private fun WidgetCell(
             )
 
             if (isSelected) {
-                // A dedicated grip strip, not a gesture over the widget's own body:
-                // many widgets (a digital clock included) are themselves interactive
-                // and swallow touches before Compose's own gesture detection ever
-                // sees them, so dragging "the widget itself" silently did nothing.
-                // This overlay is a separate touch target drawn on top, like the
-                // resize knobs below, so it reliably receives the drag.
-                val reorderDragState = androidx.compose.foundation.gestures.rememberDraggableState { delta ->
-                    reorderDragPx += delta
-                    while (reorderDragPx > reorderStepPx) {
-                        onMoveWidget(entry.id, 1)
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        reorderDragPx -= reorderStepPx
-                    }
-                    while (reorderDragPx < -reorderStepPx) {
-                        onMoveWidget(entry.id, -1)
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        reorderDragPx += reorderStepPx
+                // Small knobs on the edges rather than full-width/height strips, so
+                // the widget stays visible while you size it.
+                if (limits.canResizeWidth) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(28.dp)
+                            .pointerInput(entry.id, fullWidthPx, limits) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        dragWidthPx = fullWidthPx * widthPercent / 100f
+                                    },
+                                    onDragEnd = { sizeReadout = null },
+                                    onDragCancel = { sizeReadout = null },
+                                    onDrag = { change, offset ->
+                                        change.consume()
+                                        dragWidthPx += offset.x * 2
+                                        val rawPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
+                                            .coerceIn(limits.minWidthPercent, MAX_WIDGET_WIDTH_PERCENT)
+                                        val snapped = snapWidthPercent(rawPercent)
+                                            .coerceIn(limits.minWidthPercent, MAX_WIDGET_WIDTH_PERCENT)
+                                        if (snapped != lastSnappedWidth) {
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            lastSnappedWidth = snapped
+                                        }
+                                        sizeReadout = "$snapped %"
+                                        onResizeWidgetWidth(entry.id, snapped)
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ResizeKnob(palette)
                     }
                 }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
-                        .draggable(
-                            orientation = androidx.compose.foundation.gestures.Orientation.Vertical,
-                            state = reorderDragState,
-                            onDragStarted = { reorderDragPx = 0f },
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
+
+                if (limits.canResizeHeight) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .size(28.dp)
+                            .pointerInput(entry.id, limits) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        dragHeightPx = with(density) { heightDp.dp.toPx() }
+                                    },
+                                    onDragEnd = { sizeReadout = null },
+                                    onDragCancel = { sizeReadout = null },
+                                    onDrag = { change, offset ->
+                                        change.consume()
+                                        dragHeightPx += offset.y
+                                        val newHeightDp = with(density) { dragHeightPx.toDp().value.toInt() }
+                                            .coerceIn(limits.minHeightDp, limits.maxHeightDp)
+                                        sizeReadout = "$newHeightDp dp"
+                                        onResizeWidget(entry.id, newHeightDp)
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ResizeKnob(palette)
+                    }
+                }
+
+                val readout = sizeReadout
+                if (readout != null) {
                     Text(
-                        text = "══  Mantén y arrastra para mover  ══",
-                        color = androidx.compose.ui.graphics.Color.White,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        text = readout,
+                        color = palette.background,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .background(palette.accent)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxHeight()
-                        .width(36.dp)
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
-                        .pointerInput(entry.id, fullWidthPx) {
-                            detectDragGestures(
-                                onDragStart = { dragWidthPx = fullWidthPx * widthPercent / 100f },
-                                onDrag = { change, offset ->
-                                    change.consume()
-                                    dragWidthPx += offset.x * 2
-                                    val rawPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
-                                        .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
-                                    onResizeWidgetWidth(entry.id, snapWidthPercent(rawPercent))
-                                },
-                            )
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ResizeKnob()
-                }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
-                        .pointerInput(entry.id) {
-                            detectDragGestures(
-                                onDragStart = { dragHeightPx = with(density) { heightDp.dp.toPx() } },
-                                onDrag = { change, offset ->
-                                    change.consume()
-                                    dragHeightPx += offset.y
-                                    val newHeightDp = with(density) { dragHeightPx.toDp().value.toInt() }
-                                        .coerceIn(minHeightDp, MAX_WIDGET_HEIGHT_DP)
-                                    onResizeWidget(entry.id, newHeightDp)
-                                },
-                            )
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ResizeKnob()
-                }
             }
+        }
+
+        if (isSelected) {
+            WidgetEditToolbar(
+                palette = palette,
+                canForce = !limits.canResizeWidth || !limits.canResizeHeight || forceSize,
+                forced = forceSize,
+                onToggleForce = { forceSize = !forceSize },
+                onRemove = { onRemoveWidget(entry.id) },
+                onDone = { onDeselect() },
+                onMoveDrag = { dx, dy ->
+                    // Vertical moves the widget between rows; horizontal repositions
+                    // it within its row. Both map onto the same ordered list, so
+                    // placement stays persistable without a free-floating canvas.
+                    reorderDragX += dx
+                    reorderDragY += dy
+                    while (reorderDragY > reorderStepPx) {
+                        onMoveWidget(entry.id, 1)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        reorderDragY -= reorderStepPx
+                    }
+                    while (reorderDragY < -reorderStepPx) {
+                        onMoveWidget(entry.id, -1)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        reorderDragY += reorderStepPx
+                    }
+                    while (reorderDragX > reorderStepPx) {
+                        onMoveWidget(entry.id, 1)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        reorderDragX -= reorderStepPx
+                    }
+                    while (reorderDragX < -reorderStepPx) {
+                        onMoveWidget(entry.id, -1)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        reorderDragX += reorderStepPx
+                    }
+                },
+                onMoveDragStart = { reorderDragX = 0f; reorderDragY = 0f },
+            )
         }
     }
 }
 
+/** The floating action bar shown under a selected widget. */
 @Composable
-private fun ResizeKnob() {
+private fun WidgetEditToolbar(
+    palette: ColorPalette,
+    canForce: Boolean,
+    forced: Boolean,
+    onToggleForce: () -> Unit,
+    onRemove: () -> Unit,
+    onDone: () -> Unit,
+    onMoveDrag: (Float, Float) -> Unit,
+    onMoveDragStart: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(palette.surface)
+            .border(
+                1.dp,
+                palette.accent.copy(alpha = 0.4f),
+                androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { onMoveDragStart() },
+                        onDrag = { change, offset ->
+                            change.consume()
+                            onMoveDrag(offset.x, offset.y)
+                        },
+                    )
+                }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.OpenWith,
+                contentDescription = null,
+                tint = palette.accent,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = "Mover",
+                color = palette.accent,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+
+        if (canForce) {
+            WidgetToolbarAction(
+                icon = if (forced) Icons.Filled.LockOpen else Icons.Filled.Lock,
+                label = if (forced) "Libre" else "Forzar",
+                palette = palette,
+                onClick = onToggleForce,
+                highlighted = forced,
+            )
+        }
+
+        WidgetToolbarAction(
+            icon = Icons.Filled.Delete,
+            label = "Quitar",
+            palette = palette,
+            onClick = onRemove,
+        )
+
+        WidgetToolbarAction(
+            icon = Icons.Filled.Check,
+            label = "Listo",
+            palette = palette,
+            onClick = onDone,
+            highlighted = true,
+        )
+    }
+}
+
+@Composable
+private fun WidgetToolbarAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    palette: ColorPalette,
+    onClick: () -> Unit,
+    highlighted: Boolean = false,
+) {
+    val tint = if (highlighted) palette.accent else palette.textSecondary
+    Row(
+        modifier = Modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
+        Text(
+            text = label,
+            color = tint,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun ResizeKnob(palette: ColorPalette) {
     Box(
         modifier = Modifier
             .size(20.dp)
-            .background(
-                androidx.compose.ui.graphics.Color.White,
-                shape = androidx.compose.foundation.shape.CircleShape,
+            .background(palette.accent, shape = androidx.compose.foundation.shape.CircleShape)
+            .border(
+                2.dp,
+                palette.background,
+                androidx.compose.foundation.shape.CircleShape,
             ),
     )
 }

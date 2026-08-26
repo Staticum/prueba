@@ -154,6 +154,10 @@ class MainActivity : ComponentActivity() {
                                 onResizeWidget = settingsViewModel::setWidgetHeight,
                                 onResizeWidgetWidth = settingsViewModel::setWidgetWidth,
                                 onMoveWidget = settingsViewModel::moveWidget,
+                                onRemoveWidget = { id ->
+                                    WidgetHostProvider.get(context).deleteAppWidgetId(id)
+                                    settingsViewModel.removeWidget(id)
+                                },
                                 onRemoveInvalidWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
                                     settingsViewModel.removeWidget(id)
@@ -208,6 +212,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onAmbientLockChange = settingsViewModel::setAmbientLockEnabled,
+                                onWidgetBackgroundChange = settingsViewModel::setWidgetBackground,
                             )
 
                             Screen.WIDGET_PICKER -> WidgetPickerScreen(

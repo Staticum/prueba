@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.staticum.niagaralauncher.data.LauncherPrefs
 import com.staticum.niagaralauncher.data.PreferencesRepository
 import com.staticum.niagaralauncher.data.ScreenTintMode
+import com.staticum.niagaralauncher.data.WidgetBackground
 import com.staticum.niagaralauncher.widget.WidgetEntry
 import com.staticum.niagaralauncher.widget.WidgetRepository
 import kotlinx.coroutines.flow.SharingStarted
@@ -60,6 +61,9 @@ class SettingsViewModel(
 
     fun setAmbientLockEnabled(enabled: Boolean) =
         viewModelScope.launch { preferencesRepository.setAmbientLockEnabled(enabled) }
+
+    fun setWidgetBackground(background: WidgetBackground) =
+        viewModelScope.launch { preferencesRepository.setWidgetBackground(background) }
 
     fun addWidget(id: Int) = viewModelScope.launch { widgetRepository.addWidgetId(id) }
 
