@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import com.staticum.niagaralauncher.ui.settings.SettingsButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -109,6 +111,7 @@ fun HomeScreen(
     onQueryChange: (String) -> Unit,
     onLaunchApp: (AppInfo) -> Unit,
     onLongPressApp: (AppInfo) -> Unit,
+    onOpenAppInfo: (AppInfo) -> Unit,
     onOpenSettings: () -> Unit,
     onSwipe: (SwipeDirection) -> Unit,
     onSetAsDefaultLauncher: () -> Unit,
@@ -136,6 +139,11 @@ fun HomeScreen(
     LaunchedEffect(state.prefs.soundVolume) { tickPlayer.setVolume(state.prefs.soundVolume) }
 
     var selectedWidgetId by remember { mutableStateOf<Int?>(null) }
+    // A long press used to hide the app immediately, no confirmation - a single
+    // accidental gesture (a slightly slow tap, a finger lingering while thinking)
+    // silently removed it from the list with no way to tell what happened. Now it
+    // opens a small menu instead, and hiding requires a second, deliberate tap.
+    var longPressedApp by remember { mutableStateOf<AppInfo?>(null) }
 
     // Two separate states on purpose. Before, one value did both jobs, which forced a
     // choice between "the selection dies with the finger" and "the letter stays
@@ -380,7 +388,7 @@ fun HomeScreen(
                                 accentColor = palette.accent,
                                 textColor = palette.textPrimary,
                                 onClick = { selectedWidgetId = null; onLaunchApp(app) },
-                                onLongClick = { selectedWidgetId = null; onLongPressApp(app) },
+                                onLongClick = { selectedWidgetId = null; longPressedApp = app },
                                 modifier = Modifier.animateItem(placementSpec = tween(220)),
                             )
                         }
@@ -404,7 +412,7 @@ fun HomeScreen(
                             accentColor = palette.accent,
                             textColor = palette.textPrimary,
                             onClick = { selectedWidgetId = null; onLaunchApp(app) },
-                            onLongClick = { selectedWidgetId = null; onLongPressApp(app) },
+                            onLongClick = { selectedWidgetId = null; longPressedApp = app },
                             modifier = Modifier.animateItem(placementSpec = tween(220)),
                         )
                     }
@@ -450,6 +458,46 @@ fun HomeScreen(
                 .width(36.dp)
                 .padding(end = SpaceSm, top = SpaceSm, bottom = SpaceSm),
         )
+        }
+
+        longPressedApp?.let { app ->
+            AlertDialog(
+                onDismissRequest = { longPressedApp = null },
+                title = { Text(app.label) },
+                text = { Text("¿Qué quieres hacer con esta app?") },
+                confirmButton = {
+                    SettingsButton(
+                        text = "Ocultar",
+                        palette = palette,
+                        onClick = {
+                            onLongPressApp(app)
+                            longPressedApp = null
+                        },
+                    )
+                },
+                dismissButton = {
+                    androidx.compose.foundation.layout.Row(
+                        horizontalArrangement = Arrangement.spacedBy(SpaceSm),
+                    ) {
+                        SettingsButton(
+                            text = "Info de la app",
+                            palette = palette,
+                            onClick = {
+                                onOpenAppInfo(app)
+                                longPressedApp = null
+                            },
+                        )
+                        SettingsButton(
+                            text = "Cancelar",
+                            palette = palette,
+                            onClick = { longPressedApp = null },
+                        )
+                    }
+                },
+                containerColor = palette.surface,
+                titleContentColor = palette.textPrimary,
+                textContentColor = palette.textSecondary,
+            )
         }
     }
 }
@@ -1133,12 +1181,18 @@ private fun AppIcon(
  * where a tint just paints a solid accent square).
  *
  * A fixed brightness cutoff would fail just as often (a light glyph on a dark
- * background inverts it). Instead this treats whichever color sits in the icon's own
- * corner as "background" and keeps whatever differs enough from it as "foreground" -
- * works for dark-on-light, light-on-dark, and colored-on-white alike, though a
- * multi-color glyph with little contrast against its own background can still come
- * out as a near-empty silhouette; there's no way around that without recognizing the
- * icon's actual artwork.
+ * background inverts it). Instead this treats whichever color dominates the icon's
+ * own border as "background" and keeps whatever differs enough from it as
+ * "foreground" - works for dark-on-light, light-on-dark, and colored-on-white alike.
+ *
+ * The first version sampled a single corner pixel, which broke on real icons: a
+ * corner can land on anti-aliasing, a rounded-icon mask edge, or a soft gradient that
+ * isn't representative of the background at all, and then almost the whole icon gets
+ * classified as "foreground" - not a subtle miss, a solid tinted blob covering the
+ * icon's shape entirely. Sampling the full border and taking its most common color is
+ * far harder to throw off with one bad pixel. And when a result still comes out
+ * essentially blank or essentially solid, that isn't a usable silhouette either way -
+ * falling back to the original icon beats shipping a broken one.
  */
 private fun silhouetteOf(source: Bitmap, accentArgb: Int): Bitmap {
     val width = source.width
@@ -1146,32 +1200,80 @@ private fun silhouetteOf(source: Bitmap, accentArgb: Int): Bitmap {
     val pixels = IntArray(width * height)
     source.getPixels(pixels, 0, width, 0, 0, width, height)
 
-    val bg = pixels[0]
-    val bgR = AndroidColor.red(bg)
-    val bgG = AndroidColor.green(bg)
-    val bgB = AndroidColor.blue(bg)
+    val bg = dominantBorderColor(pixels, width, height)
     val accentR = AndroidColor.red(accentArgb)
     val accentG = AndroidColor.green(accentArgb)
     val accentB = AndroidColor.blue(accentArgb)
 
+    if (bg == null) {
+        // The border is entirely transparent: this is already a real transparent-
+        // background glyph (like an app that ships a proper adaptive icon foreground
+        // layer), so the alpha channel alone is the mask - every opaque pixel is
+        // foreground, exactly like the tint path already handled correctly.
+        for (i in pixels.indices) {
+            val alpha = AndroidColor.alpha(pixels[i])
+            pixels[i] = if (alpha == 0) 0 else AndroidColor.argb(alpha, accentR, accentG, accentB)
+        }
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        result.setPixels(pixels, 0, width, 0, 0, width, height)
+        return result
+    }
+
+    val bgR = AndroidColor.red(bg)
+    val bgG = AndroidColor.green(bg)
+    val bgB = AndroidColor.blue(bg)
+
+    var opaqueCount = 0
+    var foregroundCount = 0
     for (i in pixels.indices) {
         val pixel = pixels[i]
         val alpha = AndroidColor.alpha(pixel)
         if (alpha == 0) continue
+        opaqueCount++
         val dr = AndroidColor.red(pixel) - bgR
         val dg = AndroidColor.green(pixel) - bgG
         val db = AndroidColor.blue(pixel) - bgB
         val distance = dr * dr + dg * dg + db * db
-        pixels[i] = if (distance > SILHOUETTE_THRESHOLD) {
-            AndroidColor.argb(alpha, accentR, accentG, accentB)
+        if (distance > SILHOUETTE_THRESHOLD) {
+            foregroundCount++
+            pixels[i] = AndroidColor.argb(alpha, accentR, accentG, accentB)
         } else {
-            0
+            pixels[i] = 0
         }
     }
+
+    // A real glyph is a minority of the icon's area, not nearly all of it or next to
+    // none of it - either extreme means the background reference didn't hold for this
+    // particular icon, so the honest move is to hand back the untouched icon rather
+    // than a shape nobody would recognize.
+    if (opaqueCount == 0) return source
+    val foregroundRatio = foregroundCount.toFloat() / opaqueCount
+    if (foregroundRatio < 0.03f || foregroundRatio > 0.85f) return source
 
     val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     result.setPixels(pixels, 0, width, 0, 0, width, height)
     return result
+}
+
+/** Most common color among the icon's opaque border pixels, or null if the border is
+ * entirely transparent (a real transparent-background glyph, which needs no
+ * background reference at all - every opaque pixel already is the foreground). */
+private fun dominantBorderColor(pixels: IntArray, width: Int, height: Int): Int? {
+    val counts = HashMap<Int, Int>()
+    fun tally(x: Int, y: Int) {
+        val pixel = pixels[y * width + x]
+        if (AndroidColor.alpha(pixel) == 0) return
+        counts[pixel] = (counts[pixel] ?: 0) + 1
+    }
+    for (x in 0 until width) {
+        tally(x, 0)
+        tally(x, height - 1)
+    }
+    for (y in 0 until height) {
+        tally(0, y)
+        tally(width - 1, y)
+    }
+    return counts.maxByOrNull { it.value }?.key
 }
 
 // Squared Euclidean distance in 0-255 RGB space; empirically distinguishes a

@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
                                 onQueryChange = homeViewModel::onQueryChange,
                                 onLaunchApp = { app -> launchApp(app) },
                                 onLongPressApp = { app -> homeViewModel.toggleHidden(app, hidden = true) },
+                                onOpenAppInfo = { app -> openAppDetailsSettings(app.packageName) },
                                 onOpenSettings = { screenState.value = Screen.SETTINGS },
                                 onSwipe = { direction ->
                                     homeState.favoriteFor(direction)?.let { launchApp(it) }
@@ -373,6 +374,13 @@ class MainActivity : ComponentActivity() {
         homeViewModel.recordLaunch(app)
         val factory = com.staticum.niagaralauncher.data.AppRepository(this)
         startActivity(factory.launchIntentFor(app))
+    }
+
+    private fun openAppDetailsSettings(packageName: String) {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
+        startActivity(intent)
     }
 
     /** PACKAGE_USAGE_STATS is a special permission: there is no runtime dialog for
