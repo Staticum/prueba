@@ -72,6 +72,7 @@ fun SettingsScreen(
     onClearWallpaper: () -> Unit,
     onIconSizeChange: (Float) -> Unit,
     onMonochromeChange: (Boolean) -> Unit,
+    onIconSilhouetteChange: (Boolean) -> Unit,
     onScreenTintModeChange: (ScreenTintMode) -> Unit,
     onIndexWaveOffsetChange: (Float) -> Unit,
     onAddWidget: () -> Unit,
@@ -186,6 +187,14 @@ fun SettingsScreen(
                         checked = state.prefs.monochromeIcons,
                         palette = palette,
                         onCheckedChange = onMonochromeChange,
+                    )
+                    SettingsCardDivider(palette)
+                    SettingsSwitchRow(
+                        title = "Iconos por silueta",
+                        subtitle = "Reduce cada ícono a su forma dominante en un solo color. Más radical que el monocromático: algunos íconos con degradados o poco contraste pueden salir irreconocibles",
+                        checked = state.prefs.iconSilhouette,
+                        palette = palette,
+                        onCheckedChange = onIconSilhouetteChange,
                     )
                 }
             }

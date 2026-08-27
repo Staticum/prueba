@@ -178,6 +178,7 @@ class MainActivity : ComponentActivity() {
                                 onClearWallpaper = { settingsViewModel.setUseWallpaper(false) },
                                 onIconSizeChange = settingsViewModel::setIconSizeFactor,
                                 onMonochromeChange = settingsViewModel::setMonochromeIcons,
+                                onIconSilhouetteChange = settingsViewModel::setIconSilhouette,
                                 onScreenTintModeChange = settingsViewModel::setScreenTintMode,
                                 onIndexWaveOffsetChange = settingsViewModel::setIndexWaveOffset,
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },

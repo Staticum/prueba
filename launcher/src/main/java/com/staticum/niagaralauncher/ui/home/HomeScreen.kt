@@ -1,10 +1,13 @@
 package com.staticum.niagaralauncher.ui.home
 
 import android.appwidget.AppWidgetManager
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -334,6 +337,7 @@ fun HomeScreen(
                     apps = favoriteApps,
                     iconSizeFactor = state.prefs.iconSizeFactor,
                     monochrome = state.prefs.monochromeIcons,
+                    silhouette = state.prefs.iconSilhouette,
                     palette = palette,
                     onLaunchApp = onLaunchApp,
                 )
@@ -372,6 +376,7 @@ fun HomeScreen(
                                 app = app,
                                 iconSizeFactor = state.prefs.iconSizeFactor,
                                 monochrome = state.prefs.monochromeIcons,
+                                silhouette = state.prefs.iconSilhouette,
                                 accentColor = palette.accent,
                                 textColor = palette.textPrimary,
                                 onClick = { selectedWidgetId = null; onLaunchApp(app) },
@@ -395,6 +400,7 @@ fun HomeScreen(
                             app = app,
                             iconSizeFactor = state.prefs.iconSizeFactor,
                             monochrome = state.prefs.monochromeIcons,
+                            silhouette = state.prefs.iconSilhouette,
                             accentColor = palette.accent,
                             textColor = palette.textPrimary,
                             onClick = { selectedWidgetId = null; onLaunchApp(app) },
@@ -1092,19 +1098,27 @@ private fun AppIcon(
     app: AppInfo,
     sizeDp: androidx.compose.ui.unit.Dp,
     monochrome: Boolean,
+    silhouette: Boolean,
     accentColor: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val px = with(density) { sizeDp.toPx() }.toInt().coerceAtLeast(1)
+    val accentArgb = accentColor.toArgb()
+    // Keyed on the icon's own identity, not the Drawable instance, so scrolling a
+    // row out of the LazyColumn and back in doesn't reprocess it every time.
+    val bitmap = remember(app.key, px, silhouette, accentArgb) {
+        val raw = app.icon.toBitmap(width = px, height = px)
+        if (silhouette) silhouetteOf(raw, accentArgb) else raw
+    }.asImageBitmap()
     Box(
         modifier = modifier.size(sizeDp),
         contentAlignment = Alignment.Center,
     ) {
         Image(
-            bitmap = app.icon.toBitmap(width = px, height = px).asImageBitmap(),
+            bitmap = bitmap,
             contentDescription = null,
-            colorFilter = if (monochrome) ColorFilter.tint(accentColor) else null,
+            colorFilter = if (monochrome && !silhouette) ColorFilter.tint(accentColor) else null,
             modifier = Modifier
                 .fillMaxSize()
                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(sizeDp * 0.24f)),
@@ -1112,11 +1126,65 @@ private fun AppIcon(
     }
 }
 
+/**
+ * Reduces an app icon to its dominant shape in a single accent color, instead of
+ * merely tinting it (that only reads as a silhouette when the icon is already a
+ * transparent glyph - most launcher icons are full-bleed with an opaque background,
+ * where a tint just paints a solid accent square).
+ *
+ * A fixed brightness cutoff would fail just as often (a light glyph on a dark
+ * background inverts it). Instead this treats whichever color sits in the icon's own
+ * corner as "background" and keeps whatever differs enough from it as "foreground" -
+ * works for dark-on-light, light-on-dark, and colored-on-white alike, though a
+ * multi-color glyph with little contrast against its own background can still come
+ * out as a near-empty silhouette; there's no way around that without recognizing the
+ * icon's actual artwork.
+ */
+private fun silhouetteOf(source: Bitmap, accentArgb: Int): Bitmap {
+    val width = source.width
+    val height = source.height
+    val pixels = IntArray(width * height)
+    source.getPixels(pixels, 0, width, 0, 0, width, height)
+
+    val bg = pixels[0]
+    val bgR = AndroidColor.red(bg)
+    val bgG = AndroidColor.green(bg)
+    val bgB = AndroidColor.blue(bg)
+    val accentR = AndroidColor.red(accentArgb)
+    val accentG = AndroidColor.green(accentArgb)
+    val accentB = AndroidColor.blue(accentArgb)
+
+    for (i in pixels.indices) {
+        val pixel = pixels[i]
+        val alpha = AndroidColor.alpha(pixel)
+        if (alpha == 0) continue
+        val dr = AndroidColor.red(pixel) - bgR
+        val dg = AndroidColor.green(pixel) - bgG
+        val db = AndroidColor.blue(pixel) - bgB
+        val distance = dr * dr + dg * dg + db * db
+        pixels[i] = if (distance > SILHOUETTE_THRESHOLD) {
+            AndroidColor.argb(alpha, accentR, accentG, accentB)
+        } else {
+            0
+        }
+    }
+
+    val result = Bitmap.createBitmap(width, height, Bitmap.ARGB_8888)
+    result.setPixels(pixels, 0, width, 0, 0, width, height)
+    return result
+}
+
+// Squared Euclidean distance in 0-255 RGB space; empirically distinguishes a
+// genuinely different foreground color from anti-aliasing noise around the
+// background without a real reference set of icons to tune against.
+private const val SILHOUETTE_THRESHOLD = 60 * 60
+
 @Composable
 private fun FavoritesRow(
     apps: List<AppInfo>,
     iconSizeFactor: Float,
     monochrome: Boolean,
+    silhouette: Boolean,
     palette: ColorPalette,
     onLaunchApp: (AppInfo) -> Unit,
 ) {
@@ -1147,6 +1215,7 @@ private fun FavoritesRow(
                     app = app,
                     sizeDp = iconSize,
                     monochrome = monochrome,
+                    silhouette = silhouette,
                     accentColor = palette.accent,
                 )
             }
@@ -1447,6 +1516,7 @@ private fun AppRow(
     app: AppInfo,
     iconSizeFactor: Float,
     monochrome: Boolean,
+    silhouette: Boolean,
     accentColor: androidx.compose.ui.graphics.Color,
     textColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
@@ -1472,6 +1542,7 @@ private fun AppRow(
             app = app,
             sizeDp = iconSize,
             monochrome = monochrome,
+            silhouette = silhouette,
             accentColor = accentColor,
         )
         Text(

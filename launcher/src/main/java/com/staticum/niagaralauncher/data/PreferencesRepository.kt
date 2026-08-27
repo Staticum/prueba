@@ -43,6 +43,7 @@ data class LauncherPrefs(
     val customAccentArgb: Int? = null,
     val ambientLockEnabled: Boolean = false,
     val widgetBackground: WidgetBackground = WidgetBackground.NONE,
+    val iconSilhouette: Boolean = false,
     val frequentsEnabled: Boolean = true,
     val frequentsCount: Int = 6,
     val useSystemUsageStats: Boolean = false,
@@ -75,6 +76,7 @@ class PreferencesRepository(private val context: Context) {
         val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
         val AMBIENT_LOCK = booleanPreferencesKey("ambient_lock_enabled")
         val WIDGET_BACKGROUND = stringPreferencesKey("widget_background")
+        val ICON_SILHOUETTE = booleanPreferencesKey("icon_silhouette")
         val FREQUENTS_ENABLED = booleanPreferencesKey("frequents_enabled")
         val FREQUENTS_COUNT = intPreferencesKey("frequents_count")
         val USE_SYSTEM_USAGE = booleanPreferencesKey("use_system_usage_stats")
@@ -110,6 +112,7 @@ class PreferencesRepository(private val context: Context) {
             widgetBackground = prefs[Keys.WIDGET_BACKGROUND]?.let { raw ->
                 runCatching { WidgetBackground.valueOf(raw) }.getOrNull()
             } ?: WidgetBackground.NONE,
+            iconSilhouette = prefs[Keys.ICON_SILHOUETTE] ?: false,
             frequentsEnabled = prefs[Keys.FREQUENTS_ENABLED] ?: true,
             frequentsCount = (prefs[Keys.FREQUENTS_COUNT] ?: 6).coerceIn(4, 10),
             useSystemUsageStats = prefs[Keys.USE_SYSTEM_USAGE] ?: false,
@@ -170,6 +173,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setWidgetBackground(background: WidgetBackground) {
         context.dataStore.edit { it[Keys.WIDGET_BACKGROUND] = background.name }
+    }
+
+    suspend fun setIconSilhouette(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.ICON_SILHOUETTE] = enabled }
     }
 
     suspend fun setFrequentsEnabled(enabled: Boolean) {

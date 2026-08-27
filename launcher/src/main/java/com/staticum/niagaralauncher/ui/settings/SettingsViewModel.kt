@@ -67,6 +67,9 @@ class SettingsViewModel(
     fun setWidgetBackground(background: WidgetBackground) =
         viewModelScope.launch { preferencesRepository.setWidgetBackground(background) }
 
+    fun setIconSilhouette(enabled: Boolean) =
+        viewModelScope.launch { preferencesRepository.setIconSilhouette(enabled) }
+
     fun setFrequentsEnabled(enabled: Boolean) =
         viewModelScope.launch { preferencesRepository.setFrequentsEnabled(enabled) }
 
