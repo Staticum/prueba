@@ -112,6 +112,7 @@ fun HomeScreen(
     onLaunchApp: (AppInfo) -> Unit,
     onLongPressApp: (AppInfo) -> Unit,
     onOpenAppInfo: (AppInfo) -> Unit,
+    nextAlarmMillis: Long?,
     onOpenSettings: () -> Unit,
     onSwipe: (SwipeDirection) -> Unit,
     onSetAsDefaultLauncher: () -> Unit,
@@ -292,6 +293,8 @@ fun HomeScreen(
                     )
                 }
             }
+
+            NextAlarmBanner(millis = nextAlarmMillis, palette = palette)
 
             ZenQuoteBanner(palette = palette)
 
@@ -1099,6 +1102,40 @@ private fun ResizeKnob(palette: ColorPalette) {
                 androidx.compose.foundation.shape.CircleShape,
             ),
     )
+}
+
+/**
+ * The single next alarm, system-wide - not a list. Android has no public API for a
+ * launcher to enumerate every alarm across every app (that's each app's own internal
+ * state); AlarmManager.nextAlarmClock is the one value every app that sets a visible
+ * alarm reports to the system, which is exactly what the lock screen's own alarm
+ * indicator is built on. Renders nothing at all when there's no alarm set, rather
+ * than an empty slot - a minimalist launcher shouldn't reserve space for absence.
+ */
+@Composable
+private fun NextAlarmBanner(millis: Long?, palette: ColorPalette) {
+    if (millis == null) return
+    val context = LocalContext.current
+    val label = remember(millis) {
+        val timeText = android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(millis))
+        val isToday = android.text.format.DateUtils.isToday(millis)
+        if (isToday) timeText else "$timeText · mañana"
+    }
+    androidx.compose.foundation.layout.Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SpaceXs),
+        modifier = Modifier.padding(top = SpaceXs),
+    ) {
+        Text(
+            text = "⏰",
+            fontSize = 12.sp,
+        )
+        Text(
+            text = label,
+            color = palette.textSecondary,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
 }
 
 @Composable

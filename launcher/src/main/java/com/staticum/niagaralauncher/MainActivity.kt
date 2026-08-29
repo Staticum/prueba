@@ -1,6 +1,7 @@
 package com.staticum.niagaralauncher
 
 import android.app.Activity
+import android.app.AlarmManager
 import android.app.WallpaperManager
 import android.app.role.RoleManager
 import android.appwidget.AppWidgetManager
@@ -66,6 +67,12 @@ class MainActivity : ComponentActivity() {
     private var pendingWidgetId: Int = -1
 
     private val isDefaultLauncherState = mutableStateOf(false)
+    // The next alarm across ALL apps, not just a clock app of ours - there is no
+    // public API to enumerate every alarm on the device (that's a per-app internal
+    // detail), but AlarmManager.nextAlarmClock is the one system-wide value every
+    // launcher and lock screen already relies on to show "next alarm" without any
+    // special permission.
+    private val nextAlarmMillis = mutableStateOf<Long?>(null)
     private val screenState = mutableStateOf(Screen.HOME)
     private var widgetsSuppressed = false
 
@@ -152,6 +159,7 @@ class MainActivity : ComponentActivity() {
                                 onLaunchApp = { app -> launchApp(app) },
                                 onLongPressApp = { app -> homeViewModel.toggleHidden(app, hidden = true) },
                                 onOpenAppInfo = { app -> openAppDetailsSettings(app.packageName) },
+                                nextAlarmMillis = nextAlarmMillis.value,
                                 onOpenSettings = { screenState.value = Screen.SETTINGS },
                                 onSwipe = { direction ->
                                     homeState.favoriteFor(direction)?.let { launchApp(it) }
@@ -348,6 +356,7 @@ class MainActivity : ComponentActivity() {
         homeViewModel.refreshApps()
         isDefaultLauncherState.value = isDefaultLauncher(this)
         homeViewModel.refreshSystemUsage()
+        refreshNextAlarm()
         // Only mark the launch as "settled" (safe to try widgets again next time)
         // after staying up for a bit - a near-instant crash right after resuming
         // wouldn't get the chance to run this.
@@ -355,6 +364,11 @@ class MainActivity : ComponentActivity() {
             { SafeModeGuard.onLaunchSettled(this) },
             2500,
         )
+    }
+
+    private fun refreshNextAlarm() {
+        val alarmManager = getSystemService(AlarmManager::class.java)
+        nextAlarmMillis.value = alarmManager?.nextAlarmClock?.triggerTime
     }
 
     private fun requestDefaultLauncher() {
