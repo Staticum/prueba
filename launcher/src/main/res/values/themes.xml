@@ -1,6 +1,12 @@
 <resources>
     <style name="Theme.NiagaraLauncher" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
+        <!-- Opaque here would defeat windowShowWallpaper below: the window's own
+             background is painted before any Compose content, so a solid color
+             blocks the system wallpaper outright no matter how transparent the UI
+             on top is. Compose's own root background (HomeScreen.kt) already paints
+             the normal opaque palette color whenever wallpaper mode is off, so this
+             stays transparent unconditionally with no visible difference in that case. -->
+        <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">false</item>
