@@ -3,6 +3,10 @@ package com.staticum.niagaralauncher.ui.home
 import android.appwidget.AppWidgetManager
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -26,6 +30,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -65,12 +70,14 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.staticum.niagaralauncher.data.AppInfo
@@ -83,6 +90,7 @@ import com.staticum.niagaralauncher.widget.WidgetEntry
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * One spacing scale for the whole home screen.
@@ -1146,11 +1154,51 @@ private fun ZenQuoteBanner(palette: ColorPalette) {
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(600)) +
-            androidx.compose.animation.slideInVertically(
-                animationSpec = tween(600),
-                initialOffsetY = { -it / 3 },
+        enter = fadeIn(animationSpec = tween(600)),
+    ) {
+        ZenQuoteMarquee(quote = quote, palette = palette)
+    }
+}
+
+/**
+ * Drifts the quote from fully off-screen right to fully off-screen left, once per
+ * loop, at a constant reading speed - a fixed duration would make short quotes race
+ * by and long ones crawl, so the duration is derived from how far the text actually
+ * has to travel instead of picked per quote.
+ *
+ * Needs both the container's width and the text's own unconstrained width before it
+ * can compute that travel distance, so nothing moves until both have reported in via
+ * onGloballyPositioned - a plain `Modifier.offset` with an unmeasured width would
+ * either not move at all or jump once the real width arrives.
+ */
+@Composable
+private fun ZenQuoteMarquee(quote: String, palette: ColorPalette) {
+    var containerWidthPx by remember { mutableFloatStateOf(0f) }
+    var textWidthPx by remember { mutableFloatStateOf(0f) }
+
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(quote, containerWidthPx, textWidthPx) {
+        if (containerWidthPx <= 0f || textWidthPx <= 0f) return@LaunchedEffect
+        val travelPx = containerWidthPx + textWidthPx
+        val durationMs = (travelPx / MARQUEE_PX_PER_SECOND * 1000)
+            .toInt()
+            .coerceAtLeast(MARQUEE_MIN_DURATION_MS)
+        progress.snapTo(0f)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMs, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
             ),
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = SpaceXs, bottom = SpaceXl)
+            .clipToBounds()
+            .onGloballyPositioned { containerWidthPx = it.size.width.toFloat() },
     ) {
         // Lighter weight and a touch of letter spacing so the quote reads as a quiet
         // epigraph rather than competing with the widgets below it for attention.
@@ -1161,13 +1209,25 @@ private fun ZenQuoteBanner(palette: ColorPalette) {
             fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
             letterSpacing = 0.3.sp,
             lineHeight = 22.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = SpaceMd, end = SpaceMd, top = SpaceXs, bottom = SpaceXl),
+                .wrapContentWidth(unbounded = true)
+                .onGloballyPositioned { textWidthPx = it.size.width.toFloat() }
+                .offset {
+                    // +containerWidth (fully hidden past the right edge) to
+                    // -textWidth (fully hidden past the left edge) - right to left.
+                    val x = containerWidthPx - progress.value * (containerWidthPx + textWidthPx)
+                    IntOffset(x.roundToInt(), 0)
+                },
         )
     }
 }
+
+// Constant travel speed rather than a fixed duration, so quote length doesn't change
+// how fast it reads.
+private const val MARQUEE_PX_PER_SECOND = 70f
+private const val MARQUEE_MIN_DURATION_MS = 3000
 
 /**
  * A uniform frame for an app icon.
