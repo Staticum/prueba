@@ -19,7 +19,9 @@ data class SettingsUiState(
     val prefs: LauncherPrefs = LauncherPrefs(),
     val widgets: List<WidgetEntry> = emptyList(),
 ) {
-    val widgetIds: List<Int> get() = widgets.map { it.id }
+    // Reading order, top to bottom then left to right - the free grid has no other
+    // notion of "order" any more, but the Settings list still needs a stable one.
+    val widgetIds: List<Int> get() = widgets.sortedWith(compareBy({ it.row }, { it.col })).map { it.id }
 }
 
 class SettingsViewModel(
@@ -85,13 +87,8 @@ class SettingsViewModel(
 
     fun removeWidget(id: Int) = viewModelScope.launch { widgetRepository.removeWidgetId(id) }
 
-    fun moveWidget(id: Int, delta: Int) = viewModelScope.launch { widgetRepository.moveWidget(id, delta) }
-
-    fun setWidgetHeight(id: Int, heightDp: Int) =
-        viewModelScope.launch { widgetRepository.setWidgetHeight(id, heightDp) }
-
-    fun setWidgetWidth(id: Int, widthPercent: Int) =
-        viewModelScope.launch { widgetRepository.setWidgetWidth(id, widthPercent) }
+    fun placeWidget(id: Int, col: Int, row: Int, colSpan: Int, rowSpan: Int) =
+        viewModelScope.launch { widgetRepository.placeWidget(id, col, row, colSpan, rowSpan) }
 
     fun toggleFavoriteApp(appKey: String, favorite: Boolean) =
         viewModelScope.launch { preferencesRepository.toggleFavoriteApp(appKey, favorite) }

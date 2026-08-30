@@ -87,6 +87,7 @@ import com.staticum.niagaralauncher.ui.theme.ColorPalette
 import com.staticum.niagaralauncher.util.TickPlayer
 import com.staticum.niagaralauncher.widget.ComposeAppWidgetHost
 import com.staticum.niagaralauncher.widget.WidgetEntry
+import com.staticum.niagaralauncher.widget.WidgetGrid
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlin.math.abs
@@ -124,9 +125,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onSwipe: (SwipeDirection) -> Unit,
     onSetAsDefaultLauncher: () -> Unit,
-    onResizeWidget: (Int, Int) -> Unit,
-    onResizeWidgetWidth: (Int, Int) -> Unit,
-    onMoveWidget: (Int, Int) -> Unit,
+    onPlaceWidget: (Int, Int, Int, Int, Int) -> Unit,
     onRemoveWidget: (Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
 ) {
@@ -337,9 +336,7 @@ fun HomeScreen(
                     widgetBackground = state.prefs.widgetBackground,
                     palette = palette,
                     onSelectWidget = { selectedWidgetId = it },
-                    onResizeWidget = onResizeWidget,
-                    onResizeWidgetWidth = onResizeWidgetWidth,
-                    onMoveWidget = onMoveWidget,
+                    onPlaceWidget = onPlaceWidget,
                     onRemoveWidget = { id ->
                         selectedWidgetId = null
                         onRemoveWidget(id)
@@ -512,93 +509,84 @@ fun HomeScreen(
         }
     }
 }
-private const val MIN_WIDGET_HEIGHT_DP = 60
-private const val MAX_WIDGET_HEIGHT_DP = 520
-private const val MIN_WIDGET_WIDTH_PERCENT = 25
-private const val MAX_WIDGET_WIDTH_PERCENT = 100
-
-/** Snap points for widget width, so widgets combine cleanly into rows of 2, 3 or 4
- * (25/33/50/66/75/100) instead of any arbitrary drag position. */
-private val WIDTH_STEPS = listOf(25, 33, 50, 66, 75, 100)
-
-/** A row accepts more widgets while their combined width stays within this budget
- * (some slack over 100 absorbs rounding, e.g. three 33% widgets = 99). */
-private const val ROW_WIDTH_BUDGET_PERCENT = 101
-private const val MAX_WIDGETS_PER_ROW = 4
-
-private fun snapWidthPercent(raw: Int): Int =
-    WIDTH_STEPS.minByOrNull { kotlin.math.abs(it - raw) } ?: MAX_WIDGET_WIDTH_PERCENT
-
 /**
- * The size limits a given provider actually declares, as opposed to the app-wide
- * defaults.
+ * The size limits a given provider actually declares, expressed in grid cells
+ * rather than dp/percent - so a widget's own minimum lines up with the same units
+ * the user drags and resizes in.
  *
- * These were being ignored entirely: every widget got both resize handles and a flat
- * 60dp floor, including widgets that declare `RESIZE_NONE` (they can't be resized at
- * all) or a legitimately larger minimum. Dragging those below what they support is
- * exactly what produces stretched or clipped renders.
- *
- * `allowsForce` exists because the declared minimum is sometimes plainly wrong - the
- * system digital clock declares a minHeight far larger than what it needs - so the
- * user can deliberately override it from the edit toolbar.
+ * These used to be ignored entirely: every widget got resize handles regardless of
+ * declaring RESIZE_NONE, and a flat dp floor instead of its own minimum. Dragging
+ * those below what they support is exactly what produces stretched or clipped
+ * renders. `allowsForce` exists because the declared minimum is sometimes plainly
+ * wrong - the system digital clock declares a minHeight far larger than what it
+ * needs - so the user can deliberately override it from the edit toolbar.
  */
-private data class WidgetSizeLimits(
+private data class WidgetCellLimits(
     val canResizeWidth: Boolean,
     val canResizeHeight: Boolean,
-    val minHeightDp: Int,
-    val maxHeightDp: Int,
-    val minWidthPercent: Int,
+    val minColSpan: Int,
+    val minRowSpan: Int,
+    val maxRowSpan: Int,
 )
 
-private fun sizeLimitsFor(
+private fun cellLimitsFor(
     providerInfo: android.appwidget.AppWidgetProviderInfo,
-    fullWidthDp: Int,
+    cellWidthDp: Float,
     forced: Boolean,
-): WidgetSizeLimits {
+): WidgetCellLimits {
     if (forced) {
-        return WidgetSizeLimits(
+        return WidgetCellLimits(
             canResizeWidth = true,
             canResizeHeight = true,
-            minHeightDp = MIN_WIDGET_HEIGHT_DP,
-            maxHeightDp = MAX_WIDGET_HEIGHT_DP,
-            minWidthPercent = MIN_WIDGET_WIDTH_PERCENT,
+            minColSpan = WidgetGrid.MIN_COL_SPAN,
+            minRowSpan = WidgetGrid.MIN_ROW_SPAN,
+            maxRowSpan = WidgetGrid.MAX_ROW_SPAN,
         )
     }
     val mode = providerInfo.resizeMode
     val horizontal = mode and android.appwidget.AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0
     val vertical = mode and android.appwidget.AppWidgetProviderInfo.RESIZE_VERTICAL != 0
 
-    // minResizeHeight is what the widget says it can shrink to; minHeight is its
-    // preferred size. Prefer the former and fall back to the latter.
-    val declaredMinHeight = providerInfo.minResizeHeight.takeIf { it > 0 }
-        ?: providerInfo.minHeight
-    val declaredMaxHeight = if (android.os.Build.VERSION.SDK_INT >= 31) {
-        providerInfo.maxResizeHeight.takeIf { it > 0 }
+    // minResizeWidth/Height is what the widget says it can shrink to; minWidth/Height
+    // is its preferred size. Prefer the former and fall back to the latter.
+    val declaredMinWidthDp = (providerInfo.minResizeWidth.takeIf { it > 0 } ?: providerInfo.minWidth).toFloat()
+    val declaredMinHeightDp = (providerInfo.minResizeHeight.takeIf { it > 0 } ?: providerInfo.minHeight).toFloat()
+    val declaredMaxHeightDp = if (android.os.Build.VERSION.SDK_INT >= 31) {
+        providerInfo.maxResizeHeight.takeIf { it > 0 }?.toFloat()
     } else {
         null
     }
-    val declaredMinWidth = providerInfo.minResizeWidth.takeIf { it > 0 }
-        ?: providerInfo.minWidth
 
-    val minH = declaredMinHeight.coerceIn(MIN_WIDGET_HEIGHT_DP, MAX_WIDGET_HEIGHT_DP)
-    val maxH = (declaredMaxHeight ?: MAX_WIDGET_HEIGHT_DP)
-        .coerceIn(minH, MAX_WIDGET_HEIGHT_DP)
-    val minPercent = if (fullWidthDp > 0) {
-        snapWidthPercent((declaredMinWidth * 100 / fullWidthDp))
-            .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
+    val minColSpan = if (cellWidthDp > 0f) {
+        kotlin.math.ceil(declaredMinWidthDp / cellWidthDp).toInt().coerceIn(WidgetGrid.MIN_COL_SPAN, WidgetGrid.COLUMNS)
     } else {
-        MIN_WIDGET_WIDTH_PERCENT
+        WidgetGrid.MIN_COL_SPAN
     }
+    val minRowSpan = kotlin.math.ceil(declaredMinHeightDp / WidgetGrid.CELL_HEIGHT_DP)
+        .toInt()
+        .coerceIn(WidgetGrid.MIN_ROW_SPAN, WidgetGrid.MAX_ROW_SPAN)
+    val maxRowSpan = declaredMaxHeightDp
+        ?.let { kotlin.math.floor(it / WidgetGrid.CELL_HEIGHT_DP).toInt() }
+        ?.coerceIn(minRowSpan, WidgetGrid.MAX_ROW_SPAN)
+        ?: WidgetGrid.MAX_ROW_SPAN
 
-    return WidgetSizeLimits(
+    return WidgetCellLimits(
         canResizeWidth = horizontal,
         canResizeHeight = vertical,
-        minHeightDp = minH,
-        maxHeightDp = maxH,
-        minWidthPercent = minPercent,
+        minColSpan = minColSpan,
+        minRowSpan = minRowSpan,
+        maxRowSpan = maxRowSpan,
     )
 }
 
+/**
+ * Free-form grid, same spirit as a standard Android home screen: a fixed number of
+ * columns, each widget spanning whole cells, positioned anywhere rather than packed
+ * into rows by the app. Superseded the previous row-packing layout (width percent +
+ * height dp, auto-arranged by a greedy fit) because packing order decided placement
+ * instead of the user - dragging a widget only ever reordered a list, it never put
+ * it "here" in any spatial sense.
+ */
 @Composable
 private fun WidgetArea(
     widgets: List<WidgetEntry>,
@@ -606,106 +594,67 @@ private fun WidgetArea(
     widgetBackground: WidgetBackground,
     palette: ColorPalette,
     onSelectWidget: (Int?) -> Unit,
-    onResizeWidget: (Int, Int) -> Unit,
-    onResizeWidgetWidth: (Int, Int) -> Unit,
-    onMoveWidget: (Int, Int) -> Unit,
+    onPlaceWidget: (Int, Int, Int, Int, Int) -> Unit,
     onRemoveWidget: (Int) -> Unit,
     onRemoveInvalidWidget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val manager = remember(context) { AppWidgetManager.getInstance(context) }
-
-    // Pack widgets into rows greedily: keep adding the next widget to the current
-    // row while it still fits under the width budget and the row isn't full yet -
-    // this lets 2, 3 or 4 narrower widgets share a row in any combination. The user
-    // controls the packing indirectly, by setting each widget's width and by dragging
-    // it left/right/up/down with the move handle, which reorders the flat list that
-    // this derives from.
-    val rows = remember(widgets) {
-        val result = mutableListOf<List<WidgetEntry>>()
-        var row = mutableListOf<WidgetEntry>()
-        var rowWidth = 0
-        for (entry in widgets) {
-            val width = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
-                .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT)
-            val fitsRow = row.isNotEmpty() &&
-                row.size < MAX_WIDGETS_PER_ROW &&
-                rowWidth + width <= ROW_WIDTH_BUDGET_PERCENT
-            if (fitsRow) {
-                row.add(entry)
-                rowWidth += width
-            } else {
-                if (row.isNotEmpty()) result += row
-                row = mutableListOf(entry)
-                rowWidth = width
-            }
-        }
-        if (row.isNotEmpty()) result += row
-        result
-    }
+    val density = LocalDensity.current
 
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val density = LocalDensity.current
-        val fullWidthPx = with(density) { maxWidth.toPx() }
-        val fullWidthDp = maxWidth.value.toInt()
+        val cellWidthPx = with(density) { maxWidth.toPx() } / WidgetGrid.COLUMNS
+        val cellWidthDp = maxWidth.value / WidgetGrid.COLUMNS
+        val cellHeightPx = with(density) { WidgetGrid.CELL_HEIGHT_DP.dp.toPx() }
+        val maxRow = widgets.maxOfOrNull { it.row + it.rowSpan } ?: 0
 
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .height((maxRow * WidgetGrid.CELL_HEIGHT_DP).dp)
                 .padding(bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            rows.forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (row.size == 1) Arrangement.Center else Arrangement.spacedBy(8.dp),
-                    // Heights stay independent per widget, so a row is as tall as its
-                    // tallest member and shorter widgets align to the top rather than
-                    // stretching - the ragged bottom edge then reads as intentional
-                    // spacing instead of a layout bug.
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    row.forEach { entry ->
-                        val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
-                        // Keyed by entry.id (not list position) so a widget keeps its
-                        // Compose identity - and any in-progress drag gesture - as it
-                        // moves between rows during reordering.
-                        androidx.compose.runtime.key(entry.id) {
-                            val cellModifier = if (row.size == 1) {
-                                Modifier.fillMaxWidth(
-                                    (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
-                                        .coerceIn(MIN_WIDGET_WIDTH_PERCENT, MAX_WIDGET_WIDTH_PERCENT) / 100f,
-                                )
-                            } else {
-                                Modifier.weight(1f)
-                            }
-                            if (providerInfo == null) {
-                                OrphanedWidgetCard(
-                                    entry = entry,
-                                    palette = palette,
-                                    onRemove = onRemoveInvalidWidget,
-                                    modifier = cellModifier,
-                                )
-                            } else {
-                                WidgetCell(
-                                    entry = entry,
-                                    providerInfo = providerInfo,
-                                    fullWidthPx = fullWidthPx,
-                                    fullWidthDp = fullWidthDp,
-                                    isSelected = entry.id == selectedWidgetId,
-                                    widgetBackground = widgetBackground,
-                                    palette = palette,
-                                    onSelect = { onSelectWidget(entry.id) },
-                                    onDeselect = { onSelectWidget(null) },
-                                    onResizeWidget = onResizeWidget,
-                                    onResizeWidgetWidth = onResizeWidgetWidth,
-                                    onMoveWidget = onMoveWidget,
-                                    onRemoveWidget = onRemoveWidget,
-                                    modifier = cellModifier,
-                                )
-                            }
-                        }
+            widgets.forEach { entry ->
+                // Keyed by entry.id so a widget keeps its Compose identity - and any
+                // in-progress drag or resize - independent of where it sits in the
+                // list or how many other widgets exist.
+                androidx.compose.runtime.key(entry.id) {
+                    val providerInfo = remember(entry.id) { manager.getAppWidgetInfo(entry.id) }
+                    val xDp = with(density) { (entry.col * cellWidthPx).toDp() }
+                    val yDp = with(density) { (entry.row * cellHeightPx).toDp() }
+                    val wDp = with(density) { (entry.colSpan * cellWidthPx).toDp() }
+                    val hDp = (entry.rowSpan * WidgetGrid.CELL_HEIGHT_DP).dp
+
+                    if (providerInfo == null) {
+                        OrphanedWidgetCard(
+                            entry = entry,
+                            palette = palette,
+                            onRemove = onRemoveInvalidWidget,
+                            modifier = Modifier
+                                .offset(x = xDp, y = yDp)
+                                .size(wDp, hDp)
+                                .padding(4.dp),
+                        )
+                    } else {
+                        WidgetCell(
+                            entry = entry,
+                            providerInfo = providerInfo,
+                            cellWidthPx = cellWidthPx,
+                            cellWidthDp = cellWidthDp,
+                            cellHeightPx = cellHeightPx,
+                            xDp = xDp,
+                            yDp = yDp,
+                            widthDp = wDp,
+                            heightDp = hDp,
+                            isSelected = entry.id == selectedWidgetId,
+                            widgetBackground = widgetBackground,
+                            palette = palette,
+                            onSelect = { onSelectWidget(entry.id) },
+                            onDeselect = { onSelectWidget(null) },
+                            onPlace = onPlaceWidget,
+                            onRemoveWidget = onRemoveWidget,
+                        )
                     }
                 }
             }
@@ -762,35 +711,37 @@ private fun OrphanedWidgetCard(
 }
 
 /**
- * One widget host.
+ * One widget host, positioned at an explicit grid cell rect.
  *
- * Normally borderless. Long-pressing selects it, which shows a frame plus small
- * corner knobs and a floating toolbar *below* the widget.
+ * Normally borderless. Long-pressing selects it, which shows a frame, a single
+ * corner resize handle, and a floating toolbar below the widget with a "Mover"
+ * handle that drags it - live, in pixels - to any free cell.
  *
- * The controls deliberately do not sit on top of the widget any more: the previous
- * design stacked three 36dp strips over the content (top/right/bottom), and since the
- * minimum widget height is 60dp, the top and bottom strips alone covered more than
- * the whole widget - you were sizing something you couldn't see. The move handle is
- * still a separate touch target rather than a gesture on the widget body, because
- * interactive widgets (a digital clock among them) consume touches before Compose's
- * gesture detection sees them.
+ * Move and resize both work the same way: track a raw pixel offset for the duration
+ * of the gesture (visual only, applied via `offset`/`size` so it snaps to whole
+ * cells as you drag rather than only on release), and commit the final cell rect to
+ * [onPlace] once the finger lifts. The move handle stays a separate touch target
+ * rather than a gesture on the widget body, because interactive widgets (a digital
+ * clock among them) consume touches before Compose's own gesture detection sees them.
  */
 @Composable
 private fun WidgetCell(
     entry: WidgetEntry,
     providerInfo: android.appwidget.AppWidgetProviderInfo,
-    fullWidthPx: Float,
-    fullWidthDp: Int,
+    cellWidthPx: Float,
+    cellWidthDp: Float,
+    cellHeightPx: Float,
+    xDp: androidx.compose.ui.unit.Dp,
+    yDp: androidx.compose.ui.unit.Dp,
+    widthDp: androidx.compose.ui.unit.Dp,
+    heightDp: androidx.compose.ui.unit.Dp,
     isSelected: Boolean,
     widgetBackground: WidgetBackground,
     palette: ColorPalette,
     onSelect: () -> Unit,
     onDeselect: () -> Unit,
-    onResizeWidget: (Int, Int) -> Unit,
-    onResizeWidgetWidth: (Int, Int) -> Unit,
-    onMoveWidget: (Int, Int) -> Unit,
+    onPlace: (Int, Int, Int, Int, Int) -> Unit,
     onRemoveWidget: (Int) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
@@ -798,23 +749,17 @@ private fun WidgetCell(
     // Overriding the provider's declared minimum is opt-in, per widget, and resets
     // when the widget is deselected - it's an escape hatch, not a mode.
     var forceSize by remember(entry.id) { mutableStateOf(false) }
-    val limits = remember(providerInfo, fullWidthDp, forceSize) {
-        sizeLimitsFor(providerInfo, fullWidthDp, forceSize)
+    val limits = remember(providerInfo, cellWidthDp, forceSize) {
+        cellLimitsFor(providerInfo, cellWidthDp, forceSize)
     }
 
-    val defaultHeightDp = providerInfo.minHeight.coerceIn(limits.minHeightDp, limits.maxHeightDp)
-    val heightDp = (entry.heightDp ?: defaultHeightDp).coerceIn(limits.minHeightDp, limits.maxHeightDp)
-    val widthPercent = (entry.widthPercent ?: MAX_WIDGET_WIDTH_PERCENT)
-        .coerceIn(limits.minWidthPercent, MAX_WIDGET_WIDTH_PERCENT)
-
-    var dragWidthPx by remember(entry.id) { mutableFloatStateOf(fullWidthPx * widthPercent / 100f) }
-    var dragHeightPx by remember(entry.id) { mutableFloatStateOf(with(density) { heightDp.dp.toPx() }) }
-    var reorderDragX by remember(entry.id) { mutableFloatStateOf(0f) }
-    var reorderDragY by remember(entry.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = with(density) { 40.dp.toPx() }
-    var lastSnappedWidth by remember(entry.id) { mutableIntStateOf(widthPercent) }
-    // Shown only while a resize drag is in flight, so you get a number instead of
-    // guessing from the outline.
+    // Live drag/resize state, in pixels - zeroed once the gesture commits via onPlace.
+    var moveOffsetX by remember(entry.id) { mutableFloatStateOf(0f) }
+    var moveOffsetY by remember(entry.id) { mutableFloatStateOf(0f) }
+    var resizeWidthPx by remember(entry.id, cellWidthPx) { mutableFloatStateOf(entry.colSpan * cellWidthPx) }
+    var resizeHeightPx by remember(entry.id) { mutableFloatStateOf(entry.rowSpan * cellHeightPx) }
+    var liveColSpan by remember(entry.id) { mutableIntStateOf(entry.colSpan) }
+    var liveRowSpan by remember(entry.id) { mutableIntStateOf(entry.rowSpan) }
     var sizeReadout by remember(entry.id) { mutableStateOf<String?>(null) }
 
     val containerShape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
@@ -824,12 +769,22 @@ private fun WidgetCell(
         WidgetBackground.SOLID -> palette.surface
     }
     val containerPadding = if (widgetBackground == WidgetBackground.NONE) 0.dp else 8.dp
+    val canResize = limits.canResizeWidth || limits.canResizeHeight
 
-    Column(modifier = modifier) {
+    Box(
+        modifier = Modifier
+            .offset(
+                x = xDp + with(density) { moveOffsetX.toDp() },
+                y = yDp + with(density) { moveOffsetY.toDp() },
+            )
+            .size(
+                width = if (limits.canResizeWidth) with(density) { resizeWidthPx.toDp() } else widthDp,
+                height = if (limits.canResizeHeight) with(density) { resizeHeightPx.toDp() } else heightDp,
+            ),
+    ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(heightDp.dp)
+                .fillMaxSize()
                 .clip(containerShape)
                 .background(containerColor)
                 .then(
@@ -853,125 +808,100 @@ private fun WidgetCell(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            if (isSelected) {
-                // Small knobs on the edges rather than full-width/height strips, so
-                // the widget stays visible while you size it.
-                if (limits.canResizeWidth) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(28.dp)
-                            .pointerInput(entry.id, fullWidthPx, limits) {
-                                detectDragGestures(
-                                    onDragStart = {
-                                        dragWidthPx = fullWidthPx * widthPercent / 100f
-                                    },
-                                    onDragEnd = { sizeReadout = null },
-                                    onDragCancel = { sizeReadout = null },
-                                    onDrag = { change, offset ->
-                                        change.consume()
-                                        dragWidthPx += offset.x * 2
-                                        val rawPercent = (dragWidthPx / fullWidthPx * 100f).toInt()
-                                            .coerceIn(limits.minWidthPercent, MAX_WIDGET_WIDTH_PERCENT)
-                                        val snapped = snapWidthPercent(rawPercent)
-                                            .coerceIn(limits.minWidthPercent, MAX_WIDGET_WIDTH_PERCENT)
-                                        if (snapped != lastSnappedWidth) {
-                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            lastSnappedWidth = snapped
-                                        }
-                                        sizeReadout = "$snapped %"
-                                        onResizeWidgetWidth(entry.id, snapped)
-                                    },
-                                )
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ResizeKnob(palette)
-                    }
+            if (isSelected && canResize) {
+                // A single corner handle rather than separate width/height edges -
+                // clearer as "resize the box" on a grid, and each axis simply stays
+                // fixed when the provider doesn't support resizing it.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(28.dp)
+                        .pointerInput(entry.id, cellWidthPx, cellHeightPx, limits) {
+                            var lastColSpan = liveColSpan
+                            var lastRowSpan = liveRowSpan
+                            detectDragGestures(
+                                onDragStart = {
+                                    resizeWidthPx = liveColSpan * cellWidthPx
+                                    resizeHeightPx = liveRowSpan * cellHeightPx
+                                    lastColSpan = liveColSpan
+                                    lastRowSpan = liveRowSpan
+                                },
+                                onDragEnd = {
+                                    onPlace(entry.id, entry.col, entry.row, liveColSpan, liveRowSpan)
+                                    sizeReadout = null
+                                },
+                                onDragCancel = { sizeReadout = null },
+                                onDrag = { change, offset ->
+                                    change.consume()
+                                    if (limits.canResizeWidth) {
+                                        resizeWidthPx += offset.x
+                                        val maxSpan = WidgetGrid.COLUMNS - entry.col
+                                        liveColSpan = Math.round(resizeWidthPx / cellWidthPx)
+                                            .coerceIn(limits.minColSpan, maxSpan)
+                                        resizeWidthPx = liveColSpan * cellWidthPx
+                                    }
+                                    if (limits.canResizeHeight) {
+                                        resizeHeightPx += offset.y
+                                        liveRowSpan = Math.round(resizeHeightPx / cellHeightPx)
+                                            .coerceIn(limits.minRowSpan, limits.maxRowSpan)
+                                        resizeHeightPx = liveRowSpan * cellHeightPx
+                                    }
+                                    if (liveColSpan != lastColSpan || liveRowSpan != lastRowSpan) {
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        lastColSpan = liveColSpan
+                                        lastRowSpan = liveRowSpan
+                                    }
+                                    sizeReadout = "$liveColSpan × $liveRowSpan"
+                                },
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ResizeKnob(palette)
                 }
+            }
 
-                if (limits.canResizeHeight) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .size(28.dp)
-                            .pointerInput(entry.id, limits) {
-                                detectDragGestures(
-                                    onDragStart = {
-                                        dragHeightPx = with(density) { heightDp.dp.toPx() }
-                                    },
-                                    onDragEnd = { sizeReadout = null },
-                                    onDragCancel = { sizeReadout = null },
-                                    onDrag = { change, offset ->
-                                        change.consume()
-                                        dragHeightPx += offset.y
-                                        val newHeightDp = with(density) { dragHeightPx.toDp().value.toInt() }
-                                            .coerceIn(limits.minHeightDp, limits.maxHeightDp)
-                                        sizeReadout = "$newHeightDp dp"
-                                        onResizeWidget(entry.id, newHeightDp)
-                                    },
-                                )
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ResizeKnob(palette)
-                    }
-                }
-
-                val readout = sizeReadout
-                if (readout != null) {
-                    Text(
-                        text = readout,
-                        color = palette.background,
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                            .background(palette.accent)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                }
+            val readout = sizeReadout
+            if (readout != null) {
+                Text(
+                    text = readout,
+                    color = palette.background,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(palette.accent)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
             }
         }
 
         if (isSelected) {
-            WidgetEditToolbar(
-                palette = palette,
-                canForce = !limits.canResizeWidth || !limits.canResizeHeight || forceSize,
-                forced = forceSize,
-                onToggleForce = { forceSize = !forceSize },
-                onRemove = { onRemoveWidget(entry.id) },
-                onDone = { onDeselect() },
-                onMoveDrag = { dx, dy ->
-                    // Vertical moves the widget between rows; horizontal repositions
-                    // it within its row. Both map onto the same ordered list, so
-                    // placement stays persistable without a free-floating canvas.
-                    reorderDragX += dx
-                    reorderDragY += dy
-                    while (reorderDragY > reorderStepPx) {
-                        onMoveWidget(entry.id, 1)
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        reorderDragY -= reorderStepPx
-                    }
-                    while (reorderDragY < -reorderStepPx) {
-                        onMoveWidget(entry.id, -1)
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        reorderDragY += reorderStepPx
-                    }
-                    while (reorderDragX > reorderStepPx) {
-                        onMoveWidget(entry.id, 1)
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        reorderDragX -= reorderStepPx
-                    }
-                    while (reorderDragX < -reorderStepPx) {
-                        onMoveWidget(entry.id, -1)
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        reorderDragX += reorderStepPx
-                    }
-                },
-                onMoveDragStart = { reorderDragX = 0f; reorderDragY = 0f },
-            )
+            Box(modifier = Modifier.offset(y = heightDp)) {
+                WidgetEditToolbar(
+                    palette = palette,
+                    canForce = !limits.canResizeWidth || !limits.canResizeHeight || forceSize,
+                    forced = forceSize,
+                    onToggleForce = { forceSize = !forceSize },
+                    onRemove = { onRemoveWidget(entry.id) },
+                    onDone = { onDeselect() },
+                    onMoveDragStart = { moveOffsetX = 0f; moveOffsetY = 0f },
+                    onMoveDrag = { dx, dy ->
+                        moveOffsetX += dx
+                        moveOffsetY += dy
+                    },
+                    onMoveDragEnd = {
+                        val targetCol = Math.round((entry.col * cellWidthPx + moveOffsetX) / cellWidthPx)
+                            .coerceIn(0, WidgetGrid.COLUMNS - entry.colSpan)
+                        val targetRow = Math.round((entry.row * cellHeightPx + moveOffsetY) / cellHeightPx)
+                            .coerceAtLeast(0)
+                        onPlace(entry.id, targetCol, targetRow, entry.colSpan, entry.rowSpan)
+                        moveOffsetX = 0f
+                        moveOffsetY = 0f
+                    },
+                )
+            }
         }
     }
 }
@@ -987,6 +917,7 @@ private fun WidgetEditToolbar(
     onDone: () -> Unit,
     onMoveDrag: (Float, Float) -> Unit,
     onMoveDragStart: () -> Unit,
+    onMoveDragEnd: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1009,6 +940,8 @@ private fun WidgetEditToolbar(
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { onMoveDragStart() },
+                        onDragEnd = { onMoveDragEnd() },
+                        onDragCancel = { onMoveDragEnd() },
                         onDrag = { change, offset ->
                             change.consume()
                             onMoveDrag(offset.x, offset.y)

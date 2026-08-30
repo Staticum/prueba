@@ -165,9 +165,7 @@ class MainActivity : ComponentActivity() {
                                     homeState.favoriteFor(direction)?.let { launchApp(it) }
                                 },
                                 onSetAsDefaultLauncher = { requestDefaultLauncher() },
-                                onResizeWidget = settingsViewModel::setWidgetHeight,
-                                onResizeWidgetWidth = settingsViewModel::setWidgetWidth,
-                                onMoveWidget = settingsViewModel::moveWidget,
+                                onPlaceWidget = settingsViewModel::placeWidget,
                                 onRemoveWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
                                     settingsViewModel.removeWidget(id)
@@ -195,7 +193,6 @@ class MainActivity : ComponentActivity() {
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
                                     settingsViewModel.removeWidget(id)
                                 },
-                                onMoveWidget = settingsViewModel::moveWidget,
                                 onCheckForUpdate = updateViewModel::checkForUpdate,
                                 onDownloadUpdate = {
                                     (updateState as? UpdateUiState.Available)?.let {

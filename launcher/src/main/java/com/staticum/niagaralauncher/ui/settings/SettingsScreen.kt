@@ -77,7 +77,6 @@ fun SettingsScreen(
     onIndexWaveOffsetChange: (Float) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
-    onMoveWidget: (Int, Int) -> Unit,
     onCheckForUpdate: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
@@ -282,11 +281,7 @@ fun SettingsScreen(
                             if (index > 0) SettingsCardDivider(palette)
                             WidgetRow(
                                 id = id,
-                                canMoveUp = index > 0,
-                                canMoveDown = index < state.widgetIds.lastIndex,
                                 palette = palette,
-                                onMoveUp = { onMoveWidget(id, -1) },
-                                onMoveDown = { onMoveWidget(id, 1) },
                                 onRemove = { onRemoveWidget(id) },
                             )
                         }
@@ -571,11 +566,7 @@ private fun ScreenTintOption(
 @Composable
 private fun WidgetRow(
     id: Int,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     palette: ColorPalette,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
     onRemove: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -607,20 +598,6 @@ private fun WidgetRow(
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = if (icon != null) 14.dp else 0.dp, end = 8.dp),
         )
-        IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-            Icon(
-                Icons.Filled.KeyboardArrowUp,
-                contentDescription = "Subir",
-                tint = if (canMoveUp) palette.accent else palette.textSecondary.copy(alpha = 0.3f),
-            )
-        }
-        IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-            Icon(
-                Icons.Filled.KeyboardArrowDown,
-                contentDescription = "Bajar",
-                tint = if (canMoveDown) palette.accent else palette.textSecondary.copy(alpha = 0.3f),
-            )
-        }
         IconButton(onClick = onRemove) {
             Icon(Icons.Filled.Close, contentDescription = "Quitar", tint = palette.textSecondary)
         }
