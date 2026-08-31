@@ -6,14 +6,26 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.staticum.niagaralauncher.R
 
-/** The fonts a user can pick in Settings, restricted to the generic families Android
- * itself guarantees on every device (System.SANS_SERIF/SERIF/MONOSPACE, plus the
- * cursive/casual typeface most manufacturers ship) - no font files to bundle, no APK
- * size cost, and no risk of a family silently falling back on some device. */
+/**
+ * The fonts a user can pick in Settings.
+ *
+ * The first version of this offered Android's generic families (Serif, Monospace,
+ * Cursive) instead of bundling anything, on the reasoning that they're guaranteed to
+ * exist on every device with zero APK cost. That reasoning missed something: several
+ * Android skins (MIUI/HyperOS among them) ship a system-wide font changer that works
+ * by remapping exactly those generic family names for every app - so switching
+ * between them showed no visible difference at all on an affected phone, since the
+ * OEM's override collapsed them onto the same replacement font before Compose ever
+ * saw them. A font bundled as an actual file in the APK isn't a name any OEM feature
+ * can intercept, so that's what these are: real open-license (SIL OFL) type files,
+ * embedded directly.
+ */
 object AppFonts {
     const val DEFAULT_ID = "default"
     const val SERIF_ID = "serif"
@@ -24,17 +36,22 @@ object AppFonts {
     /** (id, display label) in the order shown in Settings. */
     val OPTIONS = listOf(
         DEFAULT_ID to "Predeterminada",
-        SANS_ID to "Sans serif",
-        SERIF_ID to "Serif",
-        MONOSPACE_ID to "Monoespaciada",
-        CURSIVE_ID to "Cursiva",
+        SANS_ID to "Inter",
+        SERIF_ID to "Lora",
+        MONOSPACE_ID to "JetBrains Mono",
+        CURSIVE_ID to "Caveat",
     )
 
+    private val interFamily = FontFamily(Font(R.font.inter_variable))
+    private val loraFamily = FontFamily(Font(R.font.lora_variable))
+    private val jetBrainsMonoFamily = FontFamily(Font(R.font.jetbrains_mono_variable))
+    private val caveatFamily = FontFamily(Font(R.font.caveat_variable))
+
     fun familyFor(id: String): FontFamily = when (id) {
-        SERIF_ID -> FontFamily.Serif
-        SANS_ID -> FontFamily.SansSerif
-        MONOSPACE_ID -> FontFamily.Monospace
-        CURSIVE_ID -> FontFamily.Cursive
+        SERIF_ID -> loraFamily
+        SANS_ID -> interFamily
+        MONOSPACE_ID -> jetBrainsMonoFamily
+        CURSIVE_ID -> caveatFamily
         else -> FontFamily.Default
     }
 

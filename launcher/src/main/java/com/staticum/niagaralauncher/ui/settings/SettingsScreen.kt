@@ -74,6 +74,7 @@ fun SettingsScreen(
     onMonochromeChange: (Boolean) -> Unit,
     onIconSilhouetteChange: (Boolean) -> Unit,
     onFontFamilyChange: (String) -> Unit,
+    onZenQuoteScrollsChange: (Boolean) -> Unit,
     onScreenTintModeChange: (ScreenTintMode) -> Unit,
     onIndexWaveOffsetChange: (Float) -> Unit,
     onHomeResetSecondsChange: (Int) -> Unit,
@@ -216,6 +217,14 @@ fun SettingsScreen(
                             },
                         )
                     }
+                    SettingsCardDivider(palette)
+                    SettingsSwitchRow(
+                        title = "Frase zen en movimiento",
+                        subtitle = "Si la apagas, la frase queda fija arriba en vez de desplazarse",
+                        checked = state.prefs.zenQuoteScrolls,
+                        palette = palette,
+                        onCheckedChange = onZenQuoteScrollsChange,
+                    )
                 }
             }
 

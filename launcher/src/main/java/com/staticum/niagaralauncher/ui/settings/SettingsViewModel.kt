@@ -66,6 +66,9 @@ class SettingsViewModel(
     fun setFontFamily(id: String) =
         viewModelScope.launch { preferencesRepository.setFontFamily(id) }
 
+    fun setZenQuoteScrolls(enabled: Boolean) =
+        viewModelScope.launch { preferencesRepository.setZenQuoteScrolls(enabled) }
+
     fun setCustomAccentColor(argb: Int) =
         viewModelScope.launch { preferencesRepository.setCustomAccentColor(argb) }
 

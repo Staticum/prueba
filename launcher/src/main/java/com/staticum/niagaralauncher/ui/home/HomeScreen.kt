@@ -317,7 +317,7 @@ fun HomeScreen(
 
             NextAlarmBanner(millis = nextAlarmMillis, palette = palette)
 
-            ZenQuoteBanner(palette = palette)
+            ZenQuoteBanner(palette = palette, scrolls = state.prefs.zenQuoteScrolls)
 
             if (!isDefaultLauncher) {
                 Text(
@@ -1094,7 +1094,7 @@ private fun NextAlarmBanner(millis: Long?, palette: ColorPalette) {
 }
 
 @Composable
-private fun ZenQuoteBanner(palette: ColorPalette) {
+private fun ZenQuoteBanner(palette: ColorPalette, scrolls: Boolean) {
     val quote = remember { ZenQuotes.random() }
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
@@ -1103,7 +1103,25 @@ private fun ZenQuoteBanner(palette: ColorPalette) {
         visible = visible,
         enter = fadeIn(animationSpec = tween(600)),
     ) {
-        ZenQuoteMarquee(quote = quote, palette = palette)
+        if (scrolls) {
+            ZenQuoteMarquee(quote = quote, palette = palette)
+        } else {
+            // Fixed alternative to the marquee: centered, wraps onto a second line
+            // instead of scrolling off-screen, for whoever finds motion distracting
+            // rather than ambient.
+            Text(
+                text = quote,
+                color = palette.textSecondary,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
+                letterSpacing = 0.3.sp,
+                lineHeight = 22.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = SpaceMd, end = SpaceMd, top = SpaceXs, bottom = SpaceXl),
+            )
+        }
     }
 }
 

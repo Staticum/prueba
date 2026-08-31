@@ -42,6 +42,7 @@ data class LauncherPrefs(
     val indexWaveOffsetDp: Float = 24f,
     val homeResetSeconds: Int = 10,
     val fontFamilyId: String = com.staticum.niagaralauncher.ui.theme.AppFonts.DEFAULT_ID,
+    val zenQuoteScrolls: Boolean = true,
     val customAccentArgb: Int? = null,
     val ambientLockEnabled: Boolean = false,
     val widgetBackground: WidgetBackground = WidgetBackground.NONE,
@@ -77,6 +78,7 @@ class PreferencesRepository(private val context: Context) {
         val INDEX_WAVE_OFFSET = floatPreferencesKey("index_wave_offset")
         val HOME_RESET_SECONDS = intPreferencesKey("home_reset_seconds")
         val FONT_FAMILY = stringPreferencesKey("font_family")
+        val ZEN_QUOTE_SCROLLS = booleanPreferencesKey("zen_quote_scrolls")
         val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
         val AMBIENT_LOCK = booleanPreferencesKey("ambient_lock_enabled")
         val WIDGET_BACKGROUND = stringPreferencesKey("widget_background")
@@ -113,6 +115,7 @@ class PreferencesRepository(private val context: Context) {
             indexWaveOffsetDp = prefs[Keys.INDEX_WAVE_OFFSET] ?: 24f,
             homeResetSeconds = (prefs[Keys.HOME_RESET_SECONDS] ?: 10).coerceIn(5, 60),
             fontFamilyId = prefs[Keys.FONT_FAMILY] ?: com.staticum.niagaralauncher.ui.theme.AppFonts.DEFAULT_ID,
+            zenQuoteScrolls = prefs[Keys.ZEN_QUOTE_SCROLLS] ?: true,
             customAccentArgb = prefs[Keys.CUSTOM_ACCENT],
             ambientLockEnabled = prefs[Keys.AMBIENT_LOCK] ?: false,
             widgetBackground = prefs[Keys.WIDGET_BACKGROUND]?.let { raw ->
@@ -172,6 +175,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setFontFamily(id: String) {
         context.dataStore.edit { it[Keys.FONT_FAMILY] = id }
+    }
+
+    suspend fun setZenQuoteScrolls(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.ZEN_QUOTE_SCROLLS] = enabled }
     }
 
     suspend fun setCustomAccentColor(argb: Int) {

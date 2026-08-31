@@ -190,6 +190,7 @@ class MainActivity : ComponentActivity() {
                                 onIndexWaveOffsetChange = settingsViewModel::setIndexWaveOffset,
                                 onHomeResetSecondsChange = settingsViewModel::setHomeResetSeconds,
                                 onFontFamilyChange = settingsViewModel::setFontFamily,
+                                onZenQuoteScrollsChange = settingsViewModel::setZenQuoteScrolls,
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)
