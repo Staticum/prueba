@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -101,10 +102,6 @@ import kotlin.math.roundToInt
  * search field and the list was arbitrary - the single most reliable tell that a
  * layout was assembled rather than designed.
  */
-/** How long a letter filter survives with nobody touching anything before the list
- * releases it and goes back to showing Frecuentes. */
-private const val LETTER_FILTER_TIMEOUT_MS = 10_000L
-
 private val SpaceXs = 4.dp
 private val SpaceSm = 8.dp
 private val SpaceMd = 16.dp
@@ -171,17 +168,34 @@ fun HomeScreen(
         }
     }
 
-    // The letter filter isn't a mode you have to dismiss: after a spell of doing
-    // nothing it lets go on its own and Frecuentes comes back. Any interaction -
-    // another letter, a scroll, a finger on the rail - changes a key here and so
-    // restarts the countdown.
-    LaunchedEffect(filterLetter, touchedLetter, listState.isScrollInProgress) {
-        if (filterLetter == null || touchedLetter != null || listState.isScrollInProgress) {
-            return@LaunchedEffect
+    // None of this is a mode you have to dismiss: a letter filter, an active search,
+    // or simply having scrolled away from the top are all states that let go on
+    // their own after a spell of doing nothing, and Frecuentes comes back. Tracking
+    // "last activity" as a timestamp, rather than one delay-then-reset per state,
+    // covers plain scrolling too - not just the letter filter - and restarts cleanly
+    // no matter which of the three combination of things changed.
+    var lastActivityAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(filterLetter, touchedLetter, state.query, listState.isScrollInProgress) {
+        lastActivityAt = System.currentTimeMillis()
+    }
+    LaunchedEffect(state.prefs.homeResetSeconds) {
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            val idleMs = System.currentTimeMillis() - lastActivityAt
+            val awayFromHome = filterLetter != null ||
+                state.query.isNotBlank() ||
+                listState.firstVisibleItemIndex > 0
+            if (touchedLetter == null &&
+                !listState.isScrollInProgress &&
+                awayFromHome &&
+                idleMs >= state.prefs.homeResetSeconds * 1000L
+            ) {
+                filterLetter = null
+                if (state.query.isNotBlank()) onQueryChange("")
+                listState.scrollToItem(0)
+                lastActivityAt = System.currentTimeMillis()
+            }
         }
-        kotlinx.coroutines.delay(LETTER_FILTER_TIMEOUT_MS)
-        filterLetter = null
-        listState.scrollToItem(0)
     }
 
     // A short one-shot per index change while scrolling the app list.

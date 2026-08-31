@@ -75,6 +75,7 @@ fun SettingsScreen(
     onIconSilhouetteChange: (Boolean) -> Unit,
     onScreenTintModeChange: (ScreenTintMode) -> Unit,
     onIndexWaveOffsetChange: (Float) -> Unit,
+    onHomeResetSecondsChange: (Int) -> Unit,
     onAddWidget: () -> Unit,
     onRemoveWidget: (Int) -> Unit,
     onCheckForUpdate: () -> Unit,
@@ -406,6 +407,16 @@ fun SettingsScreen(
                         palette = palette,
                         onValueChange = onIndexWaveOffsetChange,
                         valueLabel = { "${it.toInt()} dp" },
+                    )
+                    SettingsCardDivider(palette)
+                    SettingsSliderRow(
+                        title = "Volver al inicio tras inactividad",
+                        subtitle = "Si buscas, filtras por letra o te desplazas por la lista y dejas de tocar la pantalla, vuelve sola al inicio con Frecuentes",
+                        value = state.prefs.homeResetSeconds.toFloat(),
+                        valueRange = 5f..60f,
+                        palette = palette,
+                        onValueChange = { onHomeResetSecondsChange(it.toInt()) },
+                        valueLabel = { "${it.toInt()} s" },
                     )
                 }
             }

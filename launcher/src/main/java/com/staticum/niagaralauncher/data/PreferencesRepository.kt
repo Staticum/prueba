@@ -40,6 +40,7 @@ data class LauncherPrefs(
     val soundId: String = SoundOption.DEFAULT.id,
     val soundVolume: Float = 0.5f,
     val indexWaveOffsetDp: Float = 24f,
+    val homeResetSeconds: Int = 10,
     val customAccentArgb: Int? = null,
     val ambientLockEnabled: Boolean = false,
     val widgetBackground: WidgetBackground = WidgetBackground.NONE,
@@ -73,6 +74,7 @@ class PreferencesRepository(private val context: Context) {
         val SOUND_ID = stringPreferencesKey("sound_id")
         val SOUND_VOLUME = floatPreferencesKey("sound_volume")
         val INDEX_WAVE_OFFSET = floatPreferencesKey("index_wave_offset")
+        val HOME_RESET_SECONDS = intPreferencesKey("home_reset_seconds")
         val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
         val AMBIENT_LOCK = booleanPreferencesKey("ambient_lock_enabled")
         val WIDGET_BACKGROUND = stringPreferencesKey("widget_background")
@@ -107,6 +109,7 @@ class PreferencesRepository(private val context: Context) {
             soundId = prefs[Keys.SOUND_ID] ?: SoundOption.DEFAULT.id,
             soundVolume = prefs[Keys.SOUND_VOLUME] ?: 0.5f,
             indexWaveOffsetDp = prefs[Keys.INDEX_WAVE_OFFSET] ?: 24f,
+            homeResetSeconds = (prefs[Keys.HOME_RESET_SECONDS] ?: 10).coerceIn(5, 60),
             customAccentArgb = prefs[Keys.CUSTOM_ACCENT],
             ambientLockEnabled = prefs[Keys.AMBIENT_LOCK] ?: false,
             widgetBackground = prefs[Keys.WIDGET_BACKGROUND]?.let { raw ->
@@ -158,6 +161,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setIndexWaveOffset(offsetDp: Float) {
         context.dataStore.edit { it[Keys.INDEX_WAVE_OFFSET] = offsetDp.coerceIn(0f, 64f) }
+    }
+
+    suspend fun setHomeResetSeconds(seconds: Int) {
+        context.dataStore.edit { it[Keys.HOME_RESET_SECONDS] = seconds.coerceIn(5, 60) }
     }
 
     suspend fun setCustomAccentColor(argb: Int) {

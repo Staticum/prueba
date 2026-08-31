@@ -188,6 +188,7 @@ class MainActivity : ComponentActivity() {
                                 onIconSilhouetteChange = settingsViewModel::setIconSilhouette,
                                 onScreenTintModeChange = settingsViewModel::setScreenTintMode,
                                 onIndexWaveOffsetChange = settingsViewModel::setIndexWaveOffset,
+                                onHomeResetSecondsChange = settingsViewModel::setHomeResetSeconds,
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)

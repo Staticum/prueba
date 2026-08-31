@@ -60,6 +60,9 @@ class SettingsViewModel(
     fun setIndexWaveOffset(offsetDp: Float) =
         viewModelScope.launch { preferencesRepository.setIndexWaveOffset(offsetDp) }
 
+    fun setHomeResetSeconds(seconds: Int) =
+        viewModelScope.launch { preferencesRepository.setHomeResetSeconds(seconds) }
+
     fun setCustomAccentColor(argb: Int) =
         viewModelScope.launch { preferencesRepository.setCustomAccentColor(argb) }
 
