@@ -63,6 +63,9 @@ class SettingsViewModel(
     fun setHomeResetSeconds(seconds: Int) =
         viewModelScope.launch { preferencesRepository.setHomeResetSeconds(seconds) }
 
+    fun setFontFamily(id: String) =
+        viewModelScope.launch { preferencesRepository.setFontFamily(id) }
+
     fun setCustomAccentColor(argb: Int) =
         viewModelScope.launch { preferencesRepository.setCustomAccentColor(argb) }
 

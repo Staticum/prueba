@@ -41,6 +41,7 @@ data class LauncherPrefs(
     val soundVolume: Float = 0.5f,
     val indexWaveOffsetDp: Float = 24f,
     val homeResetSeconds: Int = 10,
+    val fontFamilyId: String = com.staticum.niagaralauncher.ui.theme.AppFonts.DEFAULT_ID,
     val customAccentArgb: Int? = null,
     val ambientLockEnabled: Boolean = false,
     val widgetBackground: WidgetBackground = WidgetBackground.NONE,
@@ -75,6 +76,7 @@ class PreferencesRepository(private val context: Context) {
         val SOUND_VOLUME = floatPreferencesKey("sound_volume")
         val INDEX_WAVE_OFFSET = floatPreferencesKey("index_wave_offset")
         val HOME_RESET_SECONDS = intPreferencesKey("home_reset_seconds")
+        val FONT_FAMILY = stringPreferencesKey("font_family")
         val CUSTOM_ACCENT = intPreferencesKey("custom_accent_argb")
         val AMBIENT_LOCK = booleanPreferencesKey("ambient_lock_enabled")
         val WIDGET_BACKGROUND = stringPreferencesKey("widget_background")
@@ -110,6 +112,7 @@ class PreferencesRepository(private val context: Context) {
             soundVolume = prefs[Keys.SOUND_VOLUME] ?: 0.5f,
             indexWaveOffsetDp = prefs[Keys.INDEX_WAVE_OFFSET] ?: 24f,
             homeResetSeconds = (prefs[Keys.HOME_RESET_SECONDS] ?: 10).coerceIn(5, 60),
+            fontFamilyId = prefs[Keys.FONT_FAMILY] ?: com.staticum.niagaralauncher.ui.theme.AppFonts.DEFAULT_ID,
             customAccentArgb = prefs[Keys.CUSTOM_ACCENT],
             ambientLockEnabled = prefs[Keys.AMBIENT_LOCK] ?: false,
             widgetBackground = prefs[Keys.WIDGET_BACKGROUND]?.let { raw ->
@@ -165,6 +168,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setHomeResetSeconds(seconds: Int) {
         context.dataStore.edit { it[Keys.HOME_RESET_SECONDS] = seconds.coerceIn(5, 60) }
+    }
+
+    suspend fun setFontFamily(id: String) {
+        context.dataStore.edit { it[Keys.FONT_FAMILY] = id }
     }
 
     suspend fun setCustomAccentColor(argb: Int) {

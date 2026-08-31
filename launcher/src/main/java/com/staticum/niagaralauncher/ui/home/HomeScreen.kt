@@ -1438,26 +1438,8 @@ private fun AlphabetIndexBar(
         lastHapticLetter = letter
     }
 
-    // A faint track appears only while scrubbing, so at rest the rail stays as quiet
-    // as it is now, but the moment you touch it the interactive area becomes visible
-    // instead of leaving you guessing where the hit region is.
-    val trackAlpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (touchIndex != null) 0.07f else 0f,
-        animationSpec = tween(180),
-        label = "indexTrack",
-    )
-
     Column(
         modifier = modifier
-            // background(color, shape) paints a rounded track WITHOUT clipping its
-            // children. Using clip() here (as v38 did) confined the letters to the
-            // rail's 36dp width, so a magnified letter sliding left was cut off and
-            // the wave appeared to only exist for glyphs hugging the right edge -
-            // the whole point of the wave is that it overflows onto the list.
-            .background(
-                color = palette.textPrimary.copy(alpha = trackAlpha),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-            )
             .onGloballyPositioned { heightPx = it.size.height.toFloat() }
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { offset ->

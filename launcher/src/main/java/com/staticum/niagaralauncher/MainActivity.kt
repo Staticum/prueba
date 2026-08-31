@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity() {
                 if (homeState.prefs.ambientLockEnabled) isLocked = true
             }
 
-            LauncherTheme(palette = homeState.prefs.palette) {
+            LauncherTheme(palette = homeState.prefs.palette, fontFamilyId = homeState.prefs.fontFamilyId) {
                 Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
                     Box(modifier = Modifier) {
                         when (screen) {
@@ -189,6 +189,7 @@ class MainActivity : ComponentActivity() {
                                 onScreenTintModeChange = settingsViewModel::setScreenTintMode,
                                 onIndexWaveOffsetChange = settingsViewModel::setIndexWaveOffset,
                                 onHomeResetSecondsChange = settingsViewModel::setHomeResetSeconds,
+                                onFontFamilyChange = settingsViewModel::setFontFamily,
                                 onAddWidget = { screenState.value = Screen.WIDGET_PICKER },
                                 onRemoveWidget = { id ->
                                     WidgetHostProvider.get(context).deleteAppWidgetId(id)

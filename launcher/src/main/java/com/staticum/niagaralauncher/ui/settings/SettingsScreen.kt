@@ -73,6 +73,7 @@ fun SettingsScreen(
     onIconSizeChange: (Float) -> Unit,
     onMonochromeChange: (Boolean) -> Unit,
     onIconSilhouetteChange: (Boolean) -> Unit,
+    onFontFamilyChange: (String) -> Unit,
     onScreenTintModeChange: (ScreenTintMode) -> Unit,
     onIndexWaveOffsetChange: (Float) -> Unit,
     onHomeResetSecondsChange: (Int) -> Unit,
@@ -196,6 +197,25 @@ fun SettingsScreen(
                         palette = palette,
                         onCheckedChange = onIconSilhouetteChange,
                     )
+                    SettingsCardDivider(palette)
+                    Text(
+                        text = "Tipografía",
+                        color = palette.textSecondary,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 4.dp),
+                    )
+                    com.staticum.niagaralauncher.ui.theme.AppFonts.OPTIONS.forEachIndexed { index, (id, label) ->
+                        SettingsRow(
+                            title = label,
+                            palette = palette,
+                            onClick = { onFontFamilyChange(id) },
+                            trailing = {
+                                if (state.prefs.fontFamilyId == id) {
+                                    Icon(Icons.Filled.Check, contentDescription = null, tint = palette.accent)
+                                }
+                            },
+                        )
+                    }
                 }
             }
 
