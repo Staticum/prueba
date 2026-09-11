@@ -37,7 +37,15 @@ object CrashLogger {
         val file = logFile(context)
         val stackTrace = StringWriter().also { throwable.printStackTrace(PrintWriter(it)) }.toString()
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        val entry = "\n===== $timestamp · thread=${thread.name} =====\n$stackTrace"
+        // Without this, a log spanning several updates (this file survives them,
+        // capped at MAX_CHARS rather than cleared) reads as one undated pile - no way
+        // to tell whether a crash predates a fix that already shipped.
+        val version = runCatching {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            val code = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)
+            "${info.versionName} ($code)"
+        }.getOrDefault("desconocida")
+        val entry = "\n===== $timestamp · v$version · thread=${thread.name} =====\n$stackTrace"
         val existing = if (file.exists()) file.readText() else ""
         file.writeText((existing + entry).takeLast(MAX_CHARS))
     }
