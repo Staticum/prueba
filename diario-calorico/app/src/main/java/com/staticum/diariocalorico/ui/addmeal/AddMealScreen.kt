@@ -175,7 +175,7 @@ private fun MealTypeDropdown(selected: MealType, onSelected: (MealType) -> Unit)
             readOnly = true,
             label = { Text("Tipo de comida") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.menuAnchor().fillMaxWidth()
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             MealType.values().forEach { type ->
