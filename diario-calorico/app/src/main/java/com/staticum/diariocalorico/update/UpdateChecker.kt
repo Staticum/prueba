@@ -26,33 +26,48 @@ class UpdateChecker {
 
     suspend fun checkForUpdate(currentVersionName: String): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder()
-                .url("https://api.github.com/repos/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/releases")
-                .addHeader("Accept", "application/vnd.github+json")
-                .build()
+            // El repo aloja releases de varios proyectos (no solo este), así que puede haber
+            // muchas páginas antes de encontrar un tag con nuestro prefijo. Se pagina hasta
+            // encontrarlo o agotar un límite razonable de páginas.
+            var url: String? = "https://api.github.com/repos/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/releases?per_page=100"
+            var match: JsonObject? = null
+            var pagesChecked = 0
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext UpdateCheckResult.Error("No se pudo consultar releases (${response.code})")
+            while (url != null && match == null && pagesChecked < 10) {
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("Accept", "application/vnd.github+json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@withContext UpdateCheckResult.Error("No se pudo consultar releases (${response.code})")
+                    }
+                    val bodyString = response.body?.string().orEmpty()
+                    val releases = json.parseToJsonElement(bodyString) as JsonArray
+
+                    match = releases
+                        .map { it as JsonObject }
+                        .firstOrNull { release ->
+                            val tag = (release["tag_name"] as? JsonPrimitive)?.content ?: ""
+                            tag.startsWith(BuildConfig.RELEASE_TAG_PREFIX)
+                        }
+
+                    url = if (match == null) nextPageUrl(response.header("Link")) else null
                 }
-                val bodyString = response.body?.string().orEmpty()
-                val releases = json.parseToJsonElement(bodyString) as JsonArray
+                pagesChecked++
+            }
 
-                val match = releases
-                    .map { it as JsonObject }
-                    .firstOrNull { release ->
-                        val tag = (release["tag_name"] as? JsonPrimitive)?.content ?: ""
-                        tag.startsWith(BuildConfig.RELEASE_TAG_PREFIX)
-                    } ?: return@withContext UpdateCheckResult.UpToDate
-
-                val tagName = (match["tag_name"] as JsonPrimitive).content
+            val found = match ?: return@withContext UpdateCheckResult.UpToDate
+            run {
+                val tagName = (found["tag_name"] as JsonPrimitive).content
                 val remoteVersion = tagName.removePrefix(BuildConfig.RELEASE_TAG_PREFIX)
 
                 if (!isNewer(remoteVersion, currentVersionName)) {
                     return@withContext UpdateCheckResult.UpToDate
                 }
 
-                val assets = match["assets"] as? JsonArray
+                val assets = found["assets"] as? JsonArray
                 val apkAsset = assets?.map { it as JsonObject }
                     ?.firstOrNull { asset ->
                         val name = (asset["name"] as? JsonPrimitive)?.content ?: ""
@@ -60,8 +75,8 @@ class UpdateChecker {
                     } ?: return@withContext UpdateCheckResult.Error("El release $tagName no tiene un APK adjunto")
 
                 val downloadUrl = (apkAsset["browser_download_url"] as JsonPrimitive).content
-                val htmlUrl = (match["html_url"] as? JsonPrimitive)?.content ?: ""
-                val notes = (match["body"] as? JsonPrimitive)?.content ?: ""
+                val htmlUrl = (found["html_url"] as? JsonPrimitive)?.content ?: ""
+                val notes = (found["body"] as? JsonPrimitive)?.content ?: ""
 
                 UpdateCheckResult.UpdateAvailable(
                     ReleaseInfo(
@@ -76,6 +91,15 @@ class UpdateChecker {
         } catch (e: Exception) {
             UpdateCheckResult.Error("Error al chequear actualizaciones: ${e.message}")
         }
+    }
+
+    private fun nextPageUrl(linkHeader: String?): String? {
+        if (linkHeader == null) return null
+        return linkHeader.split(",")
+            .map { it.trim() }
+            .firstOrNull { it.endsWith("rel=\"next\"") }
+            ?.substringAfter("<")
+            ?.substringBefore(">")
     }
 
     private fun isNewer(remote: String, current: String): Boolean {
