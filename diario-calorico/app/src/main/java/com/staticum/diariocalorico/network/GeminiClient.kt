@@ -31,34 +31,61 @@ class GeminiClient(private val apiKey: String) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+    /**
+     * Orden de modelos a intentar. Si uno responde con error transitorio (503/429, sobrecarga
+     * o modelo no disponible) se reintenta con el siguiente antes de reportar fallo al usuario.
+     */
+    private val modelFallbackOrder = listOf(
+        "gemini-3.6-flash",
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+        "gemini-2.0-flash"
+    )
+
     suspend fun estimateNutrition(
         foodPhotos: List<File>,
         labelPhotos: List<File>,
         userNote: String
     ): GeminiResult = withContext(Dispatchers.IO) {
-        try {
-            val prompt = buildPrompt(userNote, labelPhotos.isNotEmpty(), foodPhotos.size)
-            val parts = buildJsonArray {
-                add(buildJsonObject { put("text", prompt) })
-                foodPhotos.forEach { add(imagePart(it)) }
-                labelPhotos.forEach { add(imagePart(it)) }
-            }
-
-            val requestBody = buildJsonObject {
-                put("contents", buildJsonArray {
-                    add(buildJsonObject {
-                        put("role", "user")
-                        put("parts", parts)
-                    })
+        val prompt = buildPrompt(userNote, labelPhotos.isNotEmpty(), foodPhotos.size)
+        val parts = buildJsonArray {
+            add(buildJsonObject { put("text", prompt) })
+            foodPhotos.forEach { add(imagePart(it)) }
+            labelPhotos.forEach { add(imagePart(it)) }
+        }
+        val requestBody = buildJsonObject {
+            put("contents", buildJsonArray {
+                add(buildJsonObject {
+                    put("role", "user")
+                    put("parts", parts)
                 })
-                put("generationConfig", buildJsonObject {
-                    put("temperature", 0.2)
-                    put("responseMimeType", "application/json")
-                })
-            }.toString()
+            })
+            put("generationConfig", buildJsonObject {
+                put("temperature", 0.2)
+                put("responseMimeType", "application/json")
+            })
+        }.toString()
 
+        var lastError: GeminiResult.Error? = null
+        for (model in modelFallbackOrder) {
+            val result = callModel(model, requestBody)
+            if (result is GeminiResult.Success) return@withContext result
+            lastError = result as GeminiResult.Error
+            if (!isTransientError(result.message)) return@withContext result
+        }
+        lastError ?: GeminiResult.Error("No se pudo contactar a ningún modelo de Gemini")
+    }
+
+    private fun isTransientError(message: String): Boolean =
+        message.contains("503") || message.contains("429") ||
+            message.contains("UNAVAILABLE", ignoreCase = true) ||
+            message.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
+            message.contains("NOT_FOUND", ignoreCase = true)
+
+    private fun callModel(model: String, requestBody: String): GeminiResult {
+        return try {
             val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent")
+                .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
                 .addHeader("x-goog-api-key", apiKey)
                 .addHeader("Content-Type", "application/json")
                 .post(requestBody.toRequestBody("application/json".toMediaType()))
@@ -67,12 +94,12 @@ class GeminiClient(private val apiKey: String) {
             client.newCall(request).execute().use { response ->
                 val bodyString = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    return@withContext GeminiResult.Error("Error de Gemini (${response.code}): $bodyString")
+                    return GeminiResult.Error("Error de Gemini con $model (${response.code}): $bodyString")
                 }
                 parseResponse(bodyString)
             }
         } catch (e: Exception) {
-            GeminiResult.Error("Fallo de red o parseo: ${e.message}")
+            GeminiResult.Error("Fallo de red o parseo con $model: ${e.message}")
         }
     }
 

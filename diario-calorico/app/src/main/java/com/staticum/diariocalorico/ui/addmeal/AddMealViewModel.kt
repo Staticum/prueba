@@ -159,8 +159,9 @@ class AddMealViewModel(
     fun saveMeal(context: Context, onSaved: () -> Unit, onError: (String) -> Unit) {
         val f = _form.value
         if (f.foodPhotos.isEmpty()) { onError("Falta al menos una foto del alimento"); return }
-        val calories = f.calories.toIntOrNull()
-        if (calories == null) { onError("Ingresa un valor válido de calorías"); return }
+        // Si Gemini no estuvo disponible y el usuario no completó las calorías a mano,
+        // se guarda igual con 0 en vez de bloquear el registro: se puede corregir después.
+        val calories = f.calories.toIntOrNull() ?: 0
 
         viewModelScope.launch {
             val entry = MealEntry(
