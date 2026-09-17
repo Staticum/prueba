@@ -6,6 +6,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 2
+val appVersionName = project.findProperty("appVersionName") as String? ?: "1.0.1"
+
 android {
     namespace = "com.staticum.diariocalorico"
     compileSdk = 34
@@ -14,8 +17,8 @@ android {
         applicationId = "com.staticum.diariocalorico"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -24,11 +27,20 @@ android {
         buildConfigField("String", "RELEASE_TAG_PREFIX", "\"diario-calorico-v\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("keystore/release.keystore")
+            storePassword = System.getenv("RELEASE_STORE_PASSWORD") ?: "debugonly"
+            keyAlias = "diariocalorico"
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "debugonly"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
