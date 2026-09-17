@@ -11,7 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material3.Card
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -44,7 +44,7 @@ fun DashboardScreen(
                 title = { Text("Diario Calórico") },
                 actions = {
                     IconButton(onClick = onOpenHistory) { Icon(Icons.Filled.History, contentDescription = "Historial") }
-                    IconButton(onClick = onOpenReports) { Icon(Icons.Filled.ShowChart, contentDescription = "Reportes") }
+                    IconButton(onClick = onOpenReports) { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = "Reportes") }
                     IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, contentDescription = "Ajustes") }
                 }
             )
