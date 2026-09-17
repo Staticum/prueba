@@ -37,9 +37,9 @@ class GeminiClient(private val apiKey: String) {
      */
     private val modelFallbackOrder = listOf(
         "gemini-3.6-flash",
-        "gemini-2.5-flash",
-        "gemini-flash-latest",
-        "gemini-2.0-flash"
+        "gemini-3.5-flash",
+        "gemini-3.7-flash",
+        "gemini-flash-latest"
     )
 
     suspend fun estimateNutrition(
@@ -67,20 +67,66 @@ class GeminiClient(private val apiKey: String) {
         }.toString()
 
         var lastError: GeminiResult.Error? = null
+        val triedModels = mutableSetOf<String>()
+
         for (model in modelFallbackOrder) {
+            triedModels += model
             val result = callModel(model, requestBody)
             if (result is GeminiResult.Success) return@withContext result
             lastError = result as GeminiResult.Error
-            if (!isTransientError(result.message)) return@withContext result
+            // Solo se aborta de inmediato ante errores que ningún otro modelo va a resolver
+            // (clave inválida, permisos, request malformado). Todo lo demás (modelo caído,
+            // sobrecargado o removido) sigue probando el siguiente de la lista.
+            if (isFatalError(result.message)) return@withContext result
         }
+
+        // Si todos los modelos conocidos fallaron (ej. Google renombró/removió modelos otra vez),
+        // se consulta el catálogo real de modelos disponibles y se prueba con el resto.
+        for (model in discoverFallbackModels(triedModels)) {
+            triedModels += model
+            val result = callModel(model, requestBody)
+            if (result is GeminiResult.Success) return@withContext result
+            lastError = result as GeminiResult.Error
+        }
+
         lastError ?: GeminiResult.Error("No se pudo contactar a ningún modelo de Gemini")
     }
 
-    private fun isTransientError(message: String): Boolean =
-        message.contains("503") || message.contains("429") ||
-            message.contains("UNAVAILABLE", ignoreCase = true) ||
-            message.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
-            message.contains("NOT_FOUND", ignoreCase = true)
+    private fun discoverFallbackModels(alreadyTried: Set<String>): List<String> {
+        return try {
+            val request = Request.Builder()
+                .url("https://generativelanguage.googleapis.com/v1beta/models")
+                .addHeader("x-goog-api-key", apiKey)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return emptyList()
+                val bodyString = response.body?.string().orEmpty()
+                val root = json.parseToJsonElement(bodyString) as? JsonObject ?: return emptyList()
+                val models = root["models"] as? JsonArray ?: return emptyList()
+
+                models.mapNotNull { it as? JsonObject }
+                    .filter { model ->
+                        val methods = (model["supportedGenerationMethods"] as? JsonArray)
+                            ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
+                        "generateContent" in methods
+                    }
+                    .mapNotNull { model ->
+                        (model["name"] as? JsonPrimitive)?.content?.removePrefix("models/")
+                    }
+                    .filter { name -> "flash" in name.lowercase() && name !in alreadyTried }
+                    .take(3)
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun isFatalError(message: String): Boolean =
+        message.contains("400") || message.contains("401") || message.contains("403") ||
+            message.contains("API key", ignoreCase = true) ||
+            message.contains("PERMISSION_DENIED", ignoreCase = true) ||
+            message.contains("INVALID_ARGUMENT", ignoreCase = true)
 
     private fun callModel(model: String, requestBody: String): GeminiResult {
         return try {
