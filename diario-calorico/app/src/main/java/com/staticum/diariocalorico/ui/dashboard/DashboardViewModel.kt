@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.staticum.diariocalorico.data.DailyGoals
 import com.staticum.diariocalorico.data.MealRepository
 import com.staticum.diariocalorico.data.MealWithPhotos
+import com.staticum.diariocalorico.data.TrackingRepository
 import com.staticum.diariocalorico.data.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,7 +13,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -22,35 +22,62 @@ data class DashboardUiState(
     val consumedCalories: Int = 0,
     val consumedProtein: Double = 0.0,
     val consumedCarbs: Double = 0.0,
-    val consumedFat: Double = 0.0
+    val consumedFat: Double = 0.0,
+    val yesterdayExpenditure: Int? = null,
+    val latestWeightKg: Double? = null
 )
 
 class DashboardViewModel(
     private val repository: MealRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val trackingRepository: TrackingRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState
 
+    private val zone = ZoneId.systemDefault()
+
     init {
-        val zone = ZoneId.systemDefault()
         val startOfDay = LocalDate.now(zone).atStartOfDay(zone).toInstant()
         val endOfDay = LocalDate.now(zone).plusDays(1).atStartOfDay(zone).toInstant()
 
+        viewModelScope.launch { trackingRepository.ensureSeedWeight(82.8) }
+
         repository.observeMealsBetween(startOfDay, endOfDay)
             .combine(userPreferences.dailyGoals) { meals, goals -> meals to goals }
-            .onEach { (meals, goals) ->
-                _uiState.value = DashboardUiState(
+            .combine(trackingRepository.observeLatestWeight()) { (meals, goals), weight -> Triple(meals, goals, weight) }
+            .onEach { (meals, goals, weight) ->
+                _uiState.value = _uiState.value.copy(
                     goals = goals,
                     todayMeals = meals,
                     consumedCalories = meals.sumOf { it.meal.calories },
                     consumedProtein = meals.sumOf { it.meal.proteinGrams },
                     consumedCarbs = meals.sumOf { it.meal.carbsGrams },
-                    consumedFat = meals.sumOf { it.meal.fatGrams }
+                    consumedFat = meals.sumOf { it.meal.fatGrams },
+                    latestWeightKg = weight?.weightKg
                 )
             }
             .launchIn(viewModelScope)
+
+        viewModelScope.launch { loadYesterdayExpenditure() }
+    }
+
+    private suspend fun loadYesterdayExpenditure() {
+        val yesterday = LocalDate.now(zone).minusDays(1)
+        val expenditure = trackingRepository.getExpenditureForDate(yesterday)
+        _uiState.value = _uiState.value.copy(yesterdayExpenditure = expenditure?.caloriesBurned)
+    }
+
+    fun saveYesterdayExpenditure(caloriesBurned: Int) {
+        viewModelScope.launch {
+            trackingRepository.saveExpenditure(LocalDate.now(zone).minusDays(1), caloriesBurned)
+            loadYesterdayExpenditure()
+        }
+    }
+
+    fun saveWeight(weightKg: Double) {
+        viewModelScope.launch { trackingRepository.saveWeight(weightKg) }
     }
 
     fun deleteMeal(meal: com.staticum.diariocalorico.data.MealEntry) {

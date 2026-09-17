@@ -30,7 +30,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
     NavHost(navController = navController, startDestination = Routes.DASHBOARD) {
         composable(Routes.DASHBOARD) {
             val vm: DashboardViewModel = viewModel(factory = LambdaViewModelFactory {
-                DashboardViewModel(app.repository, app.userPreferences)
+                DashboardViewModel(app.repository, app.userPreferences, app.trackingRepository)
             })
             DashboardScreen(
                 viewModel = vm,
@@ -76,7 +76,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
         }
         composable(Routes.REPORTS) {
             val vm: ReportsViewModel = viewModel(factory = LambdaViewModelFactory {
-                ReportsViewModel(app.repository, app.userPreferences)
+                ReportsViewModel(app.repository, app.userPreferences, app.trackingRepository)
             })
             ReportsScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }

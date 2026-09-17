@@ -2,6 +2,7 @@ package com.staticum.diariocalorico.data
 
 import androidx.room.TypeConverter
 import java.time.Instant
+import java.time.LocalDate
 
 class Converters {
     @TypeConverter
@@ -15,4 +16,10 @@ class Converters {
 
     @TypeConverter
     fun toMealType(value: String?): MealType? = value?.let { MealType.valueOf(it) }
+
+    @TypeConverter
+    fun fromLocalDate(value: LocalDate?): Long? = value?.toEpochDay()
+
+    @TypeConverter
+    fun toLocalDate(value: Long?): LocalDate? = value?.let { LocalDate.ofEpochDay(it) }
 }
