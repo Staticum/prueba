@@ -67,6 +67,15 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
 
             Text("Metas diarias")
             OutlinedTextField(value = caloriesField, onValueChange = { caloriesField = it }, label = { Text("Calorías (kcal)") }, modifier = Modifier.fillMaxWidth())
+            OutlinedButton(onClick = {
+                val cal = caloriesField.toIntOrNull()
+                if (cal != null) {
+                    // Distribución estándar 30% proteína / 40% carbohidratos / 30% grasa.
+                    proteinField = ((cal * 0.30) / 4).toInt().toString()
+                    carbsField = ((cal * 0.40) / 4).toInt().toString()
+                    fatField = ((cal * 0.30) / 9).toInt().toString()
+                }
+            }) { Text("Sugerir macros desde calorías") }
             OutlinedTextField(value = proteinField, onValueChange = { proteinField = it }, label = { Text("Proteína (g)") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = carbsField, onValueChange = { carbsField = it }, label = { Text("Carbohidratos (g)") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = fatField, onValueChange = { fatField = it }, label = { Text("Grasa (g)") }, modifier = Modifier.fillMaxWidth())

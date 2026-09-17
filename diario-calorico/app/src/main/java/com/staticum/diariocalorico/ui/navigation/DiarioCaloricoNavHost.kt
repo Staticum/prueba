@@ -4,9 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.staticum.diariocalorico.DiarioCaloricoApplication
 import com.staticum.diariocalorico.ui.addmeal.AddMealScreen
 import com.staticum.diariocalorico.ui.addmeal.AddMealViewModel
@@ -35,7 +37,8 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
                 onAddMeal = { navController.navigate(Routes.ADD_MEAL) },
                 onOpenHistory = { navController.navigate(Routes.HISTORY) },
                 onOpenReports = { navController.navigate(Routes.REPORTS) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onEditMeal = { mealId -> navController.navigate(Routes.editMeal(mealId)) }
             )
         }
         composable(Routes.ADD_MEAL) {
@@ -48,9 +51,28 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
                 onSaved = { navController.popBackStack() }
             )
         }
+        composable(
+            Routes.EDIT_MEAL,
+            arguments = listOf(navArgument("mealId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val mealId = backStackEntry.arguments?.getLong("mealId") ?: return@composable
+            val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
+                AddMealViewModel(app.repository, app.userPreferences)
+            })
+            androidx.compose.runtime.LaunchedEffect(mealId) { vm.loadForEdit(mealId) }
+            AddMealScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() }
+            )
+        }
         composable(Routes.HISTORY) {
             val vm: HistoryViewModel = viewModel(factory = LambdaViewModelFactory { HistoryViewModel(app.repository) })
-            HistoryScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            HistoryScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onEditMeal = { mealId -> navController.navigate(Routes.editMeal(mealId)) }
+            )
         }
         composable(Routes.REPORTS) {
             val vm: ReportsViewModel = viewModel(factory = LambdaViewModelFactory {

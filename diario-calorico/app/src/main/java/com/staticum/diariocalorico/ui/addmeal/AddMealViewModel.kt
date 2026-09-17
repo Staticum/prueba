@@ -24,7 +24,8 @@ sealed class AnalysisState {
 }
 
 data class AddMealFormState(
-    val foodPhoto: File? = null,
+    val editingMealId: Long? = null,
+    val foodPhotos: List<File> = emptyList(),
     val labelPhotos: List<File> = emptyList(),
     val userNote: String = "",
     val consumedAt: Instant = Instant.now(),
@@ -47,7 +48,41 @@ class AddMealViewModel(
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState
 
-    fun setFoodPhoto(file: File) { _form.value = _form.value.copy(foodPhoto = file) }
+    private val _frequentMeals = MutableStateFlow<List<MealEntry>>(emptyList())
+    val frequentMeals: StateFlow<List<MealEntry>> = _frequentMeals
+
+    init {
+        viewModelScope.launch {
+            _frequentMeals.value = repository.getFrequentMeals()
+        }
+    }
+
+    fun loadForEdit(mealId: Long) {
+        viewModelScope.launch {
+            val existing = repository.getMealWithPhotos(mealId) ?: return@launch
+            _form.value = AddMealFormState(
+                editingMealId = existing.meal.id,
+                foodPhotos = existing.allFoodPhotoPaths.map { File(it) },
+                labelPhotos = existing.labelPhotos.map { File(it.photoPath) },
+                userNote = existing.meal.description,
+                consumedAt = existing.meal.consumedAt,
+                mealType = existing.meal.mealType,
+                calories = existing.meal.calories.toString(),
+                proteinGrams = existing.meal.proteinGrams.toString(),
+                carbsGrams = existing.meal.carbsGrams.toString(),
+                fatGrams = existing.meal.fatGrams.toString(),
+                detectedFoods = existing.meal.detectedFoods
+            )
+        }
+    }
+
+    fun addFoodPhoto(file: File) {
+        _form.value = _form.value.copy(foodPhotos = _form.value.foodPhotos + file)
+    }
+
+    fun removeFoodPhoto(file: File) {
+        _form.value = _form.value.copy(foodPhotos = _form.value.foodPhotos - file)
+    }
 
     fun addLabelPhoto(file: File) {
         _form.value = _form.value.copy(labelPhotos = _form.value.labelPhotos + file)
@@ -60,6 +95,18 @@ class AddMealViewModel(
     fun setUserNote(note: String) { _form.value = _form.value.copy(userNote = note) }
     fun setConsumedAt(instant: Instant) { _form.value = _form.value.copy(consumedAt = instant) }
     fun setMealType(type: MealType) { _form.value = _form.value.copy(mealType = type) }
+
+    fun applyFrequentMeal(meal: MealEntry) {
+        _form.value = _form.value.copy(
+            mealType = meal.mealType,
+            userNote = meal.description,
+            calories = meal.calories.toString(),
+            proteinGrams = meal.proteinGrams.toString(),
+            carbsGrams = meal.carbsGrams.toString(),
+            fatGrams = meal.fatGrams.toString(),
+            detectedFoods = meal.detectedFoods
+        )
+    }
 
     fun updateEditableFields(
         calories: String = _form.value.calories,
@@ -78,8 +125,9 @@ class AddMealViewModel(
     }
 
     fun analyzeWithGemini() {
-        val photo = _form.value.foodPhoto ?: run {
-            _analysisState.value = AnalysisState.Failed("Primero toma o selecciona una foto del alimento")
+        val photos = _form.value.foodPhotos
+        if (photos.isEmpty()) {
+            _analysisState.value = AnalysisState.Failed("Primero toma o selecciona al menos una foto del alimento")
             return
         }
         val apiKey = userPreferences.getGeminiApiKey()
@@ -91,7 +139,7 @@ class AddMealViewModel(
         _analysisState.value = AnalysisState.Loading
         viewModelScope.launch {
             val client = GeminiClient(apiKey)
-            when (val result = client.estimateNutrition(photo, _form.value.labelPhotos, _form.value.userNote)) {
+            when (val result = client.estimateNutrition(photos, _form.value.labelPhotos, _form.value.userNote)) {
                 is GeminiResult.Success -> {
                     val estimate = result.estimate
                     updateEditableFields(
@@ -110,24 +158,30 @@ class AddMealViewModel(
 
     fun saveMeal(context: Context, onSaved: () -> Unit, onError: (String) -> Unit) {
         val f = _form.value
-        val photo = f.foodPhoto
-        if (photo == null) { onError("Falta la foto del alimento"); return }
+        if (f.foodPhotos.isEmpty()) { onError("Falta al menos una foto del alimento"); return }
         val calories = f.calories.toIntOrNull()
         if (calories == null) { onError("Ingresa un valor válido de calorías"); return }
 
         viewModelScope.launch {
             val entry = MealEntry(
+                id = f.editingMealId ?: 0,
                 consumedAt = f.consumedAt,
                 mealType = f.mealType,
                 description = f.userNote,
-                foodPhotoPath = photo.absolutePath,
+                foodPhotoPath = f.foodPhotos.first().absolutePath,
                 calories = calories,
                 proteinGrams = f.proteinGrams.toDoubleOrNull() ?: 0.0,
                 carbsGrams = f.carbsGrams.toDoubleOrNull() ?: 0.0,
                 fatGrams = f.fatGrams.toDoubleOrNull() ?: 0.0,
                 detectedFoods = f.detectedFoods
             )
-            repository.saveMeal(entry, f.labelPhotos.map { it.absolutePath })
+            val extraFoodPhotos = f.foodPhotos.drop(1).map { it.absolutePath }
+            val labelPhotos = f.labelPhotos.map { it.absolutePath }
+            if (f.editingMealId != null) {
+                repository.updateMeal(entry, extraFoodPhotos, labelPhotos)
+            } else {
+                repository.saveMeal(entry, extraFoodPhotos, labelPhotos)
+            }
             onSaved()
         }
     }

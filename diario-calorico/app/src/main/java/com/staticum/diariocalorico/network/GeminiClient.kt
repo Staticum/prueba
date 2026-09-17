@@ -32,15 +32,15 @@ class GeminiClient(private val apiKey: String) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     suspend fun estimateNutrition(
-        foodPhoto: File,
+        foodPhotos: List<File>,
         labelPhotos: List<File>,
         userNote: String
     ): GeminiResult = withContext(Dispatchers.IO) {
         try {
-            val prompt = buildPrompt(userNote, labelPhotos.isNotEmpty())
+            val prompt = buildPrompt(userNote, labelPhotos.isNotEmpty(), foodPhotos.size)
             val parts = buildJsonArray {
                 add(buildJsonObject { put("text", prompt) })
-                add(imagePart(foodPhoto))
+                foodPhotos.forEach { add(imagePart(it)) }
                 labelPhotos.forEach { add(imagePart(it)) }
             }
 
@@ -91,12 +91,17 @@ class GeminiClient(private val apiKey: String) {
         }
     }
 
-    private fun buildPrompt(userNote: String, hasLabelPhotos: Boolean): String {
+    private fun buildPrompt(userNote: String, hasLabelPhotos: Boolean, foodPhotoCount: Int): String {
         val notePart = if (userNote.isNotBlank()) {
             "El usuario describe el alimento así: \"$userNote\". Usa esta descripción para mejorar la estimación."
         } else {
             "El usuario no agregó descripción de texto."
         }
+        val multiPhotoPart = if (foodPhotoCount > 1) {
+            "Las primeras $foodPhotoCount imágenes son fotos de distintos platos o alimentos de una misma comida " +
+                "(por ejemplo: entrada, plato de fondo, postre). Estímalos como parte de UNA sola comida y entrega " +
+                "el total combinado de todos ellos, no solo del primero."
+        } else ""
         val labelPart = if (hasLabelPhotos) {
             "También se incluyen una o más fotografías de la etiqueta de información nutricional del empaque; " +
                 "prioriza esos datos exactos sobre tu estimación visual cuando estén disponibles y sean legibles."
@@ -105,6 +110,7 @@ class GeminiClient(private val apiKey: String) {
         return """
             Eres un nutricionista experto. Analiza la(s) imagen(es) de comida entregada(s) y estima su contenido nutricional total.
             $notePart
+            $multiPhotoPart
             $labelPart
             Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional) con este formato exacto:
             {
