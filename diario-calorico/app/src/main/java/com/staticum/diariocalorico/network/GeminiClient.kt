@@ -126,7 +126,8 @@ class GeminiClient(private val apiKey: String) {
         message.contains("400") || message.contains("401") || message.contains("403") ||
             message.contains("API key", ignoreCase = true) ||
             message.contains("PERMISSION_DENIED", ignoreCase = true) ||
-            message.contains("INVALID_ARGUMENT", ignoreCase = true)
+            message.contains("INVALID_ARGUMENT", ignoreCase = true) ||
+            message.contains("No hay conexión a internet")
 
     private fun callModel(model: String, requestBody: String): GeminiResult {
         return try {
@@ -144,8 +145,12 @@ class GeminiClient(private val apiKey: String) {
                 }
                 parseResponse(bodyString)
             }
+        } catch (e: java.net.UnknownHostException) {
+            GeminiResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
+        } catch (e: java.io.IOException) {
+            GeminiResult.Error("Fallo de conexión con $model: ${e.message}")
         } catch (e: Exception) {
-            GeminiResult.Error("Fallo de red o parseo con $model: ${e.message}")
+            GeminiResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
         }
     }
 
