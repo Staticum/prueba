@@ -26,14 +26,16 @@ class UpdateChecker {
 
     suspend fun checkForUpdate(currentVersionName: String): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
-            // El repo aloja releases de varios proyectos (no solo este), así que puede haber
-            // muchas páginas antes de encontrar un tag con nuestro prefijo. Se pagina hasta
-            // encontrarlo o agotar un límite razonable de páginas.
+            // El repo aloja releases de varios proyectos (no solo este) y la lista NO viene
+            // necesariamente ordenada por versión/fecha (se ha visto v1.0.9 antes que v1.0.10
+            // en la respuesta real de la API). Por eso se recorren TODAS las páginas juntando
+            // todos los matches de nuestro prefijo, y al final se elige el de mayor versión
+            // numérica en vez de asumir que el primero encontrado es el más nuevo.
             var url: String? = "https://api.github.com/repos/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/releases?per_page=100"
-            var match: JsonObject? = null
+            val allMatches = mutableListOf<JsonObject>()
             var pagesChecked = 0
 
-            while (url != null && match == null && pagesChecked < 10) {
+            while (url != null && pagesChecked < 10) {
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("Accept", "application/vnd.github+json")
@@ -46,19 +48,22 @@ class UpdateChecker {
                     val bodyString = response.body?.string().orEmpty()
                     val releases = json.parseToJsonElement(bodyString) as JsonArray
 
-                    match = releases
+                    allMatches += releases
                         .map { it as JsonObject }
-                        .firstOrNull { release ->
+                        .filter { release ->
                             val tag = (release["tag_name"] as? JsonPrimitive)?.content ?: ""
                             tag.startsWith(BuildConfig.RELEASE_TAG_PREFIX)
                         }
 
-                    url = if (match == null) nextPageUrl(response.header("Link")) else null
+                    url = nextPageUrl(response.header("Link"))
                 }
                 pagesChecked++
             }
 
-            val found = match ?: return@withContext UpdateCheckResult.UpToDate
+            val found = allMatches.maxByOrNull { release ->
+                val tag = (release["tag_name"] as JsonPrimitive).content
+                versionRank(tag.removePrefix(BuildConfig.RELEASE_TAG_PREFIX))
+            } ?: return@withContext UpdateCheckResult.UpToDate
             run {
                 val tagName = (found["tag_name"] as JsonPrimitive).content
                 val remoteVersion = tagName.removePrefix(BuildConfig.RELEASE_TAG_PREFIX)
@@ -100,6 +105,14 @@ class UpdateChecker {
             .firstOrNull { it.endsWith("rel=\"next\"") }
             ?.substringAfter("<")
             ?.substringBefore(">")
+    }
+
+    /** Convierte "1.0.10" en un número comparable (1_000_010) para poder usar maxByOrNull. */
+    private fun versionRank(version: String): Long {
+        val parts = version.split(".").mapNotNull { it.toIntOrNull() }
+        return parts.getOrElse(0) { 0 } * 1_000_000L +
+            parts.getOrElse(1) { 0 } * 1_000L +
+            parts.getOrElse(2) { 0 }
     }
 
     private fun isNewer(remote: String, current: String): Boolean {
