@@ -130,42 +130,78 @@ class GeminiClient(private val apiKey: String) {
             message.contains("No hay conexión a internet")
 
     private fun callModel(model: String, requestBody: String): GeminiResult {
-        return try {
-            val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
-                .addHeader("x-goog-api-key", apiKey)
-                .addHeader("Content-Type", "application/json")
-                .post(requestBody.toRequestBody("application/json".toMediaType()))
-                .build()
+        // Un corte de red de un segundo (muy común en 4G/5G real, aunque el promedio de la
+        // conexión sea bueno) no debería tirar todo el intento: se reintenta una vez antes de
+        // pasar al siguiente modelo o reportar el error.
+        repeat(2) { attempt ->
+            try {
+                val request = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+                    .addHeader("x-goog-api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
+                    .post(requestBody.toRequestBody("application/json".toMediaType()))
+                    .build()
 
-            client.newCall(request).execute().use { response ->
-                val bodyString = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    return GeminiResult.Error("Error de Gemini con $model (${response.code}): $bodyString")
+                client.newCall(request).execute().use { response ->
+                    val bodyString = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        return GeminiResult.Error("Error de Gemini con $model (${response.code}): $bodyString")
+                    }
+                    return parseResponse(bodyString)
                 }
-                parseResponse(bodyString)
+            } catch (e: java.net.UnknownHostException) {
+                return GeminiResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
+            } catch (e: java.io.IOException) {
+                if (attempt == 1) return GeminiResult.Error("Fallo de conexión con $model tras reintentar: ${e.message}")
+                // primer intento falló por una excepción de red transitoria: se reintenta una vez.
+            } catch (e: Exception) {
+                return GeminiResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
             }
-        } catch (e: java.net.UnknownHostException) {
-            GeminiResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
-        } catch (e: java.io.IOException) {
-            GeminiResult.Error("Fallo de conexión con $model: ${e.message}")
-        } catch (e: Exception) {
-            GeminiResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
         }
+        return GeminiResult.Error("Fallo de conexión con $model")
     }
 
     private fun imagePart(file: File): JsonObject {
-        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-        val bytes = ByteArrayOutputStream().use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
-            stream.toByteArray()
-        }
-        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        val base64 = Base64.encodeToString(downscaleToJpeg(file), Base64.NO_WRAP)
         return buildJsonObject {
             put("inlineData", buildJsonObject {
                 put("mimeType", "image/jpeg")
                 put("data", base64)
             })
+        }
+    }
+
+    /**
+     * Las fotos de cámara pueden venir en resoluciones muy altas (12+ MP). Enviarlas tal cual a
+     * Gemini infla el payload a varios MB por foto (más con varias fotos por comida), lo que
+     * hace la subida lenta y frágil ante cualquier variación de red, y puede agotar la memoria
+     * al decodificar varias a la vez. Gemini no necesita resolución completa para reconocer
+     * comida, así que se reduce a un máximo de 1280px de lado antes de comprimir.
+     */
+    private fun downscaleToJpeg(file: File, maxDimension: Int = 1280, quality: Int = 80): ByteArray {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+
+        var sampleSize = 1
+        while (bounds.outWidth / (sampleSize * 2) >= maxDimension || bounds.outHeight / (sampleSize * 2) >= maxDimension) {
+            sampleSize *= 2
+        }
+
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        var bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
+            ?: throw IllegalStateException("No se pudo decodificar la imagen ${file.name}")
+
+        val scale = maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)
+        if (scale < 1f) {
+            val scaled = Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+            if (scaled !== bitmap) bitmap.recycle()
+            bitmap = scaled
+        }
+
+        return ByteArrayOutputStream().use { stream ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+            bitmap.recycle()
+            stream.toByteArray()
         }
     }
 
