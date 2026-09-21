@@ -7,6 +7,7 @@ object Routes {
     const val HISTORY = "history"
     const val REPORTS = "reports"
     const val SETTINGS = "settings"
+    const val COACH = "coach"
 
     fun editMeal(mealId: Long) = "edit_meal/$mealId"
 }

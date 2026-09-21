@@ -21,6 +21,11 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.TimeUnit
 
+private sealed class TextFetchResult {
+    data class Success(val text: String) : TextFetchResult()
+    data class Error(val message: String) : TextFetchResult()
+}
+
 class GeminiClient(private val apiKey: String) {
 
     private val client = OkHttpClient.Builder()
@@ -47,13 +52,37 @@ class GeminiClient(private val apiKey: String) {
         labelPhotos: List<File>,
         userNote: String
     ): GeminiResult = withContext(Dispatchers.IO) {
-        val prompt = buildPrompt(userNote, labelPhotos.isNotEmpty(), foodPhotos.size)
+        val prompt = buildEstimatePrompt(userNote, labelPhotos.isNotEmpty(), foodPhotos.size)
         val parts = buildJsonArray {
             add(buildJsonObject { put("text", prompt) })
             foodPhotos.forEach { add(imagePart(it)) }
             labelPhotos.forEach { add(imagePart(it)) }
         }
-        val requestBody = buildJsonObject {
+        val requestBody = buildRequestBody(parts, jsonResponse = true)
+
+        when (val result = fetchTextWithFallback(requestBody)) {
+            is TextFetchResult.Success -> parseEstimate(result.text)
+            is TextFetchResult.Error -> GeminiResult.Error(result.message)
+        }
+    }
+
+    /**
+     * Le pide a Gemini sugerencias sobre el consumo del día (alimentos, efectos/beneficios),
+     * a partir de un resumen textual ya armado por la UI (comidas, metas, gasto, peso, contexto
+     * adicional del usuario). No usa imágenes.
+     */
+    suspend fun getDailyAdvice(prompt: String): CoachResult = withContext(Dispatchers.IO) {
+        val parts = buildJsonArray { add(buildJsonObject { put("text", prompt) }) }
+        val requestBody = buildRequestBody(parts, jsonResponse = false)
+
+        when (val result = fetchTextWithFallback(requestBody)) {
+            is TextFetchResult.Success -> CoachResult.Success(result.text.trim())
+            is TextFetchResult.Error -> CoachResult.Error(result.message)
+        }
+    }
+
+    private fun buildRequestBody(parts: kotlinx.serialization.json.JsonElement, jsonResponse: Boolean): String =
+        buildJsonObject {
             put("contents", buildJsonArray {
                 add(buildJsonObject {
                     put("role", "user")
@@ -61,35 +90,36 @@ class GeminiClient(private val apiKey: String) {
                 })
             })
             put("generationConfig", buildJsonObject {
-                put("temperature", 0.2)
-                put("responseMimeType", "application/json")
+                put("temperature", 0.3)
+                if (jsonResponse) put("responseMimeType", "application/json")
             })
         }.toString()
 
-        var lastError: GeminiResult.Error? = null
+    private fun fetchTextWithFallback(requestBody: String): TextFetchResult {
+        var lastError: TextFetchResult.Error? = null
         val triedModels = mutableSetOf<String>()
 
         for (model in modelFallbackOrder) {
             triedModels += model
-            val result = callModel(model, requestBody)
-            if (result is GeminiResult.Success) return@withContext result
-            lastError = result as GeminiResult.Error
+            val result = fetchModelText(model, requestBody)
+            if (result is TextFetchResult.Success) return result
+            lastError = result as TextFetchResult.Error
             // Solo se aborta de inmediato ante errores que ningún otro modelo va a resolver
             // (clave inválida, permisos, request malformado). Todo lo demás (modelo caído,
             // sobrecargado o removido) sigue probando el siguiente de la lista.
-            if (isFatalError(result.message)) return@withContext result
+            if (isFatalError(result.message)) return result
         }
 
         // Si todos los modelos conocidos fallaron (ej. Google renombró/removió modelos otra vez),
         // se consulta el catálogo real de modelos disponibles y se prueba con el resto.
         for (model in discoverFallbackModels(triedModels)) {
             triedModels += model
-            val result = callModel(model, requestBody)
-            if (result is GeminiResult.Success) return@withContext result
-            lastError = result as GeminiResult.Error
+            val result = fetchModelText(model, requestBody)
+            if (result is TextFetchResult.Success) return result
+            lastError = result as TextFetchResult.Error
         }
 
-        lastError ?: GeminiResult.Error("No se pudo contactar a ningún modelo de Gemini")
+        return lastError ?: TextFetchResult.Error("No se pudo contactar a ningún modelo de Gemini")
     }
 
     private fun discoverFallbackModels(alreadyTried: Set<String>): List<String> {
@@ -129,7 +159,7 @@ class GeminiClient(private val apiKey: String) {
             message.contains("INVALID_ARGUMENT", ignoreCase = true) ||
             message.contains("No hay conexión a internet")
 
-    private fun callModel(model: String, requestBody: String): GeminiResult {
+    private fun fetchModelText(model: String, requestBody: String): TextFetchResult {
         // Un corte de red o un fallo de DNS puntual (muy común en 4G/5G real, aunque el
         // promedio de la conexión sea bueno: el resolver del teléfono a veces falla en un
         // intento aislado) no debería tirar todo el intento: se reintenta antes de pasar al
@@ -148,23 +178,41 @@ class GeminiClient(private val apiKey: String) {
                 client.newCall(request).execute().use { response ->
                     val bodyString = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
-                        return GeminiResult.Error("Error de Gemini con $model (${response.code}): $bodyString")
+                        return TextFetchResult.Error("Error de Gemini con $model (${response.code}): $bodyString")
                     }
-                    return parseResponse(bodyString)
+                    return extractText(bodyString)
                 }
             } catch (e: java.net.UnknownHostException) {
                 if (attempt == maxAttempts - 1) {
-                    return GeminiResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini tras $maxAttempts intentos. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
+                    return TextFetchResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini tras $maxAttempts intentos. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
                 }
                 Thread.sleep(800L * (attempt + 1))
             } catch (e: java.io.IOException) {
-                if (attempt == maxAttempts - 1) return GeminiResult.Error("Fallo de conexión con $model tras reintentar: ${e.message}")
+                if (attempt == maxAttempts - 1) return TextFetchResult.Error("Fallo de conexión con $model tras reintentar: ${e.message}")
                 Thread.sleep(500L * (attempt + 1))
             } catch (e: Exception) {
-                return GeminiResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
+                return TextFetchResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
             }
         }
-        return GeminiResult.Error("Fallo de conexión con $model")
+        return TextFetchResult.Error("Fallo de conexión con $model")
+    }
+
+    private fun extractText(body: String): TextFetchResult {
+        return try {
+            val root = json.parseToJsonElement(body).let { it as JsonObject }
+            val candidates = root["candidates"]?.let { it as JsonArray }
+                ?: return TextFetchResult.Error("Respuesta sin candidatos: $body")
+            val firstCandidate = candidates.firstOrNull() as? JsonObject
+                ?: return TextFetchResult.Error("Candidato vacío: $body")
+            val content = firstCandidate["content"] as? JsonObject
+            val parts = content?.get("parts") as? JsonArray
+            val text = (parts?.firstOrNull() as? JsonObject)?.get("text")
+                ?.let { it as? JsonPrimitive }?.content
+                ?: return TextFetchResult.Error("Sin texto en la respuesta: $body")
+            TextFetchResult.Success(text)
+        } catch (e: Exception) {
+            TextFetchResult.Error("No se pudo interpretar la respuesta de Gemini: ${e.message}")
+        }
     }
 
     private fun imagePart(file: File): JsonObject {
@@ -211,7 +259,7 @@ class GeminiClient(private val apiKey: String) {
         }
     }
 
-    private fun buildPrompt(userNote: String, hasLabelPhotos: Boolean, foodPhotoCount: Int): String {
+    private fun buildEstimatePrompt(userNote: String, hasLabelPhotos: Boolean, foodPhotoCount: Int): String {
         val notePart = if (userNote.isNotBlank()) {
             "El usuario describe el alimento así: \"$userNote\". Usa esta descripción para mejorar la estimación."
         } else {
@@ -244,19 +292,8 @@ class GeminiClient(private val apiKey: String) {
         """.trimIndent()
     }
 
-    private fun parseResponse(body: String): GeminiResult {
+    private fun parseEstimate(text: String): GeminiResult {
         return try {
-            val root = json.parseToJsonElement(body).let { it as JsonObject }
-            val candidates = root["candidates"]?.let { it as JsonArray }
-                ?: return GeminiResult.Error("Respuesta sin candidatos: $body")
-            val firstCandidate = candidates.firstOrNull() as? JsonObject
-                ?: return GeminiResult.Error("Candidato vacío: $body")
-            val content = firstCandidate["content"] as? JsonObject
-            val parts = content?.get("parts") as? JsonArray
-            val text = (parts?.firstOrNull() as? JsonObject)?.get("text")
-                ?.let { it as? JsonPrimitive }?.content
-                ?: return GeminiResult.Error("Sin texto en la respuesta: $body")
-
             val cleaned = text.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
             val estimate = json.decodeFromString(NutritionEstimate.serializer(), cleaned)
             GeminiResult.Success(estimate)

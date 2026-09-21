@@ -16,3 +16,8 @@ sealed class GeminiResult {
     data class Success(val estimate: NutritionEstimate) : GeminiResult()
     data class Error(val message: String) : GeminiResult()
 }
+
+sealed class CoachResult {
+    data class Success(val advice: String) : CoachResult()
+    data class Error(val message: String) : CoachResult()
+}

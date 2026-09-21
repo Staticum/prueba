@@ -12,6 +12,8 @@ import androidx.navigation.navArgument
 import com.staticum.diariocalorico.DiarioCaloricoApplication
 import com.staticum.diariocalorico.ui.addmeal.AddMealScreen
 import com.staticum.diariocalorico.ui.addmeal.AddMealViewModel
+import com.staticum.diariocalorico.ui.coach.CoachScreen
+import com.staticum.diariocalorico.ui.coach.CoachViewModel
 import com.staticum.diariocalorico.ui.dashboard.DashboardScreen
 import com.staticum.diariocalorico.ui.dashboard.DashboardViewModel
 import com.staticum.diariocalorico.ui.history.HistoryScreen
@@ -38,8 +40,15 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
                 onOpenHistory = { navController.navigate(Routes.HISTORY) },
                 onOpenReports = { navController.navigate(Routes.REPORTS) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                onEditMeal = { mealId -> navController.navigate(Routes.editMeal(mealId)) }
+                onEditMeal = { mealId -> navController.navigate(Routes.editMeal(mealId)) },
+                onOpenCoach = { navController.navigate(Routes.COACH) }
             )
+        }
+        composable(Routes.COACH) {
+            val vm: CoachViewModel = viewModel(factory = LambdaViewModelFactory {
+                CoachViewModel(app.repository, app.userPreferences, app.trackingRepository)
+            })
+            CoachScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
         composable(Routes.ADD_MEAL) {
             val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {

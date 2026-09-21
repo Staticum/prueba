@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TipsAndUpdates
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,7 +56,8 @@ fun DashboardScreen(
     onOpenHistory: () -> Unit,
     onOpenReports: () -> Unit,
     onOpenSettings: () -> Unit,
-    onEditMeal: (Long) -> Unit
+    onEditMeal: (Long) -> Unit,
+    onOpenCoach: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -64,6 +66,7 @@ fun DashboardScreen(
             TopAppBar(
                 title = { Text("Diario Calórico") },
                 actions = {
+                    IconButton(onClick = onOpenCoach) { Icon(Icons.Filled.TipsAndUpdates, contentDescription = "Coach nutricional") }
                     IconButton(onClick = onOpenHistory) { Icon(Icons.Filled.History, contentDescription = "Historial") }
                     IconButton(onClick = onOpenReports) { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = "Reportes") }
                     IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, contentDescription = "Ajustes") }
