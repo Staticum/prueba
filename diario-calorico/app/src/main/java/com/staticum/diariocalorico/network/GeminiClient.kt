@@ -130,10 +130,13 @@ class GeminiClient(private val apiKey: String) {
             message.contains("No hay conexión a internet")
 
     private fun callModel(model: String, requestBody: String): GeminiResult {
-        // Un corte de red de un segundo (muy común en 4G/5G real, aunque el promedio de la
-        // conexión sea bueno) no debería tirar todo el intento: se reintenta una vez antes de
-        // pasar al siguiente modelo o reportar el error.
-        repeat(2) { attempt ->
+        // Un corte de red o un fallo de DNS puntual (muy común en 4G/5G real, aunque el
+        // promedio de la conexión sea bueno: el resolver del teléfono a veces falla en un
+        // intento aislado) no debería tirar todo el intento: se reintenta antes de pasar al
+        // siguiente modelo o reportar el error. UnknownHostException también se reintenta,
+        // con una pequeña pausa para darle tiempo al resolver DNS del sistema a recuperarse.
+        val maxAttempts = 3
+        repeat(maxAttempts) { attempt ->
             try {
                 val request = Request.Builder()
                     .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
@@ -150,10 +153,13 @@ class GeminiClient(private val apiKey: String) {
                     return parseResponse(bodyString)
                 }
             } catch (e: java.net.UnknownHostException) {
-                return GeminiResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
+                if (attempt == maxAttempts - 1) {
+                    return GeminiResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini tras $maxAttempts intentos. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
+                }
+                Thread.sleep(800L * (attempt + 1))
             } catch (e: java.io.IOException) {
-                if (attempt == 1) return GeminiResult.Error("Fallo de conexión con $model tras reintentar: ${e.message}")
-                // primer intento falló por una excepción de red transitoria: se reintenta una vez.
+                if (attempt == maxAttempts - 1) return GeminiResult.Error("Fallo de conexión con $model tras reintentar: ${e.message}")
+                Thread.sleep(500L * (attempt + 1))
             } catch (e: Exception) {
                 return GeminiResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
             }
