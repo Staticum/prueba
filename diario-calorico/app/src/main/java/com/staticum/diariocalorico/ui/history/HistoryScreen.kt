@@ -35,10 +35,15 @@ import coil.compose.rememberAsyncImagePainter
 import com.staticum.diariocalorico.data.MealWithPhotos
 import com.staticum.diariocalorico.util.DateTimeFormatters
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
-fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit, onEditMeal: (Long) -> Unit) {
+fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit, onEditMeal: (Long) -> Unit, onOpenDay: (LocalDate) -> Unit) {
     val meals by viewModel.meals.collectAsState()
+    val zone = ZoneId.systemDefault()
+    val mealsByDay = meals.groupBy { it.meal.consumedAt.atZone(zone).toLocalDate() }
+        .toSortedMap(compareByDescending { it })
 
     Scaffold(
         topBar = {
@@ -57,12 +62,22 @@ fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit, onEditMeal: (
             }
         } else {
             LazyColumn(modifier = Modifier.padding(padding).fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(meals) { item ->
-                    HistoryRow(
-                        item,
-                        onDelete = { viewModel.deleteMeal(item.meal) },
-                        onClick = { onEditMeal(item.meal.id) }
-                    )
+                mealsByDay.forEach { (day, dayMeals) ->
+                    item {
+                        Text(
+                            DateTimeFormatters.formatDate(day),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth().clickable { onOpenDay(day) }.padding(vertical = 8.dp)
+                        )
+                    }
+                    items(dayMeals) { item ->
+                        HistoryRow(
+                            item,
+                            onDelete = { viewModel.deleteMeal(item.meal) },
+                            onClick = { onEditMeal(item.meal.id) }
+                        )
+                    }
                 }
             }
         }

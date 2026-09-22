@@ -23,7 +23,6 @@ data class DashboardUiState(
     val consumedProtein: Double = 0.0,
     val consumedCarbs: Double = 0.0,
     val consumedFat: Double = 0.0,
-    val yesterdayExpenditure: Int? = null,
     val latestWeightKg: Double? = null
 )
 
@@ -59,21 +58,6 @@ class DashboardViewModel(
                 )
             }
             .launchIn(viewModelScope)
-
-        viewModelScope.launch { loadYesterdayExpenditure() }
-    }
-
-    private suspend fun loadYesterdayExpenditure() {
-        val yesterday = LocalDate.now(zone).minusDays(1)
-        val expenditure = trackingRepository.getExpenditureForDate(yesterday)
-        _uiState.value = _uiState.value.copy(yesterdayExpenditure = expenditure?.caloriesBurned)
-    }
-
-    fun saveYesterdayExpenditure(caloriesBurned: Int) {
-        viewModelScope.launch {
-            trackingRepository.saveExpenditure(LocalDate.now(zone).minusDays(1), caloriesBurned)
-            loadYesterdayExpenditure()
-        }
     }
 
     fun saveWeight(weightKg: Double) {

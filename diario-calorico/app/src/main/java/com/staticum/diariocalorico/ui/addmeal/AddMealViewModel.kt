@@ -96,6 +96,15 @@ class AddMealViewModel(
     fun setConsumedAt(instant: Instant) { _form.value = _form.value.copy(consumedAt = instant) }
     fun setMealType(type: MealType) { _form.value = _form.value.copy(mealType = type) }
 
+    /**
+     * Al agregar una comida desde la vista de un día cerrado, se precarga esa fecha (a mediodía)
+     * en vez de la hora actual, ya que la comida no fue registrada hoy.
+     */
+    fun presetDate(date: java.time.LocalDate) {
+        val instant = date.atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant()
+        _form.value = _form.value.copy(consumedAt = instant)
+    }
+
     fun applyFrequentMeal(meal: MealEntry) {
         _form.value = _form.value.copy(
             mealType = meal.mealType,

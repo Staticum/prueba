@@ -16,6 +16,8 @@ import com.staticum.diariocalorico.ui.coach.CoachScreen
 import com.staticum.diariocalorico.ui.coach.CoachViewModel
 import com.staticum.diariocalorico.ui.dashboard.DashboardScreen
 import com.staticum.diariocalorico.ui.dashboard.DashboardViewModel
+import com.staticum.diariocalorico.ui.daydetail.DayDetailScreen
+import com.staticum.diariocalorico.ui.daydetail.DayDetailViewModel
 import com.staticum.diariocalorico.ui.history.HistoryScreen
 import com.staticum.diariocalorico.ui.history.HistoryViewModel
 import com.staticum.diariocalorico.ui.reports.ReportsScreen
@@ -23,6 +25,7 @@ import com.staticum.diariocalorico.ui.reports.ReportsViewModel
 import com.staticum.diariocalorico.ui.settings.SettingsScreen
 import com.staticum.diariocalorico.ui.settings.SettingsViewModel
 import com.staticum.diariocalorico.util.LambdaViewModelFactory
+import java.time.LocalDate
 
 @Composable
 fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavController()) {
@@ -41,7 +44,8 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
                 onOpenReports = { navController.navigate(Routes.REPORTS) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onEditMeal = { mealId -> navController.navigate(Routes.editMeal(mealId)) },
-                onOpenCoach = { navController.navigate(Routes.COACH) }
+                onOpenCoach = { navController.navigate(Routes.COACH) },
+                onOpenDay = { date -> navController.navigate(Routes.dayDetail(date)) }
             )
         }
         composable(Routes.COACH) {
@@ -80,7 +84,40 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
             HistoryScreen(
                 viewModel = vm,
                 onBack = { navController.popBackStack() },
+                onEditMeal = { mealId -> navController.navigate(Routes.editMeal(mealId)) },
+                onOpenDay = { date -> navController.navigate(Routes.dayDetail(date)) }
+            )
+        }
+        composable(
+            Routes.DAY_DETAIL,
+            arguments = listOf(navArgument("epochDay") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val epochDay = backStackEntry.arguments?.getLong("epochDay") ?: return@composable
+            val date = LocalDate.ofEpochDay(epochDay)
+            val vm: DayDetailViewModel = viewModel(factory = LambdaViewModelFactory {
+                DayDetailViewModel(date, app.repository, app.userPreferences, app.trackingRepository)
+            })
+            DayDetailScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onAddMeal = { navController.navigate(Routes.addMealForDate(date)) },
                 onEditMeal = { mealId -> navController.navigate(Routes.editMeal(mealId)) }
+            )
+        }
+        composable(
+            Routes.ADD_MEAL_FOR_DATE,
+            arguments = listOf(navArgument("epochDay") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val epochDay = backStackEntry.arguments?.getLong("epochDay") ?: return@composable
+            val date = LocalDate.ofEpochDay(epochDay)
+            val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
+                AddMealViewModel(app.repository, app.userPreferences)
+            })
+            androidx.compose.runtime.LaunchedEffect(date) { vm.presetDate(date) }
+            AddMealScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() }
             )
         }
         composable(Routes.REPORTS) {

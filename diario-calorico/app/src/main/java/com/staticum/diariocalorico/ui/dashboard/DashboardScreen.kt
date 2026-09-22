@@ -1,5 +1,6 @@
 package com.staticum.diariocalorico.ui.dashboard
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.RestaurantMenu
@@ -43,11 +45,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.staticum.diariocalorico.data.MealWithPhotos
 import com.staticum.diariocalorico.util.DateTimeFormatters
 import java.io.File
+import java.time.LocalDate
+import java.util.Calendar
 
 @Composable
 fun DashboardScreen(
@@ -57,15 +62,27 @@ fun DashboardScreen(
     onOpenReports: () -> Unit,
     onOpenSettings: () -> Unit,
     onEditMeal: (Long) -> Unit,
-    onOpenCoach: () -> Unit
+    onOpenCoach: () -> Unit,
+    onOpenDay: (LocalDate) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    fun openDayPicker() {
+        val today = Calendar.getInstance()
+        DatePickerDialog(context, { _, year, month, day ->
+            onOpenDay(LocalDate.of(year, month + 1, day))
+        }, today.get(Calendar.YEAR), today.get(Calendar.MONTH), today.get(Calendar.DAY_OF_MONTH)).apply {
+            datePicker.maxDate = today.timeInMillis - 24 * 60 * 60 * 1000
+        }.show()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Diario Calórico") },
                 actions = {
+                    IconButton(onClick = { openDayPicker() }) { Icon(Icons.Filled.CalendarMonth, contentDescription = "Ver día anterior") }
                     IconButton(onClick = onOpenCoach) { Icon(Icons.Filled.TipsAndUpdates, contentDescription = "Coach nutricional") }
                     IconButton(onClick = onOpenHistory) { Icon(Icons.Filled.History, contentDescription = "Historial") }
                     IconButton(onClick = onOpenReports) { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = "Reportes") }
@@ -81,9 +98,7 @@ fun DashboardScreen(
             item { ProgressCard(state) }
             item {
                 TrackingCard(
-                    yesterdayExpenditure = state.yesterdayExpenditure,
                     latestWeightKg = state.latestWeightKg,
-                    onSaveExpenditure = viewModel::saveYesterdayExpenditure,
                     onSaveWeight = viewModel::saveWeight
                 )
             }
@@ -124,32 +139,14 @@ private fun ProgressCard(state: DashboardUiState) {
 
 @Composable
 private fun TrackingCard(
-    yesterdayExpenditure: Int?,
     latestWeightKg: Double?,
-    onSaveExpenditure: (Int) -> Unit,
     onSaveWeight: (Double) -> Unit
 ) {
-    var showExpenditureDialog by remember { mutableStateOf(false) }
     var showWeightDialog by remember { mutableStateOf(false) }
 
     Card(elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Seguimiento (reloj Polar)", style = MaterialTheme.typography.titleSmall)
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { showExpenditureDialog = true },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Gasto calórico de ayer", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        if (yesterdayExpenditure != null) "$yesterdayExpenditure kcal" else "Sin registrar · toca para ingresar",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = null)
-            }
             Row(
                 modifier = Modifier.fillMaxWidth().clickable { showWeightDialog = true },
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -165,20 +162,12 @@ private fun TrackingCard(
                 }
                 Icon(Icons.Filled.MonitorWeight, contentDescription = null)
             }
+            Text(
+                "El gasto calórico de cada día se ingresa desde su vista de día cerrado (ícono de calendario).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-    }
-
-    if (showExpenditureDialog) {
-        NumberInputDialog(
-            title = "Gasto calórico de ayer",
-            label = "Calorías gastadas (kcal)",
-            initialValue = yesterdayExpenditure?.toString().orEmpty(),
-            onDismiss = { showExpenditureDialog = false },
-            onConfirm = { value ->
-                value.toIntOrNull()?.let(onSaveExpenditure)
-                showExpenditureDialog = false
-            }
-        )
     }
 
     if (showWeightDialog) {
