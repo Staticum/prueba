@@ -13,17 +13,65 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.InetAddress
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 private sealed class TextFetchResult {
     data class Success(val text: String) : TextFetchResult()
     data class Error(val message: String) : TextFetchResult()
+}
+
+/**
+ * Algunas operadoras/redes filtran o tienen resolución DNS poco confiable específicamente para
+ * dominios de APIs de IA (generativelanguage.googleapis.com), aunque el resto de la conexión
+ * funcione bien. Cuando el DNS del sistema falla, se reintenta vía DNS-over-HTTPS de Cloudflare
+ * (consultado por IP fija, sin depender del DNS del operador) antes de darse por vencido.
+ */
+private class FallbackDns : Dns {
+    private val dohClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
+    private val dohJson = Json { ignoreUnknownKeys = true }
+
+    override fun lookup(hostname: String): List<InetAddress> {
+        try {
+            return Dns.SYSTEM.lookup(hostname)
+        } catch (systemFailure: UnknownHostException) {
+            val viaDoh = resolveViaDoh(hostname)
+            if (viaDoh.isNotEmpty()) return viaDoh
+            throw systemFailure
+        }
+    }
+
+    private fun resolveViaDoh(hostname: String): List<InetAddress> {
+        return try {
+            val request = Request.Builder()
+                .url("https://1.1.1.1/dns-query?name=$hostname&type=A")
+                .addHeader("Accept", "application/dns-json")
+                .build()
+            dohClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return emptyList()
+                val body = response.body?.string().orEmpty()
+                val root = dohJson.parseToJsonElement(body) as? JsonObject ?: return emptyList()
+                val answers = root["Answer"] as? JsonArray ?: return emptyList()
+                answers.mapNotNull { answer ->
+                    ((answer as? JsonObject)?.get("data") as? JsonPrimitive)?.content
+                        ?.let { ip -> runCatching { InetAddress.getByName(ip) }.getOrNull() }
+                }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 }
 
 class GeminiClient(private val apiKey: String) {
@@ -32,6 +80,7 @@ class GeminiClient(private val apiKey: String) {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .dns(FallbackDns())
         .build()
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -157,7 +206,7 @@ class GeminiClient(private val apiKey: String) {
             message.contains("API key", ignoreCase = true) ||
             message.contains("PERMISSION_DENIED", ignoreCase = true) ||
             message.contains("INVALID_ARGUMENT", ignoreCase = true) ||
-            message.contains("No hay conexión a internet")
+            message.contains("No se pudo conectar con el servidor de Gemini")
 
     private fun fetchModelText(model: String, requestBody: String): TextFetchResult {
         // Un corte de red o un fallo de DNS puntual (muy común en 4G/5G real, aunque el
@@ -184,7 +233,16 @@ class GeminiClient(private val apiKey: String) {
                 }
             } catch (e: java.net.UnknownHostException) {
                 if (attempt == maxAttempts - 1) {
-                    return TextFetchResult.Error("No hay conexión a internet: no se pudo resolver el servidor de Gemini tras $maxAttempts intentos. Revisa tu WiFi o datos móviles e inténtalo de nuevo.")
+                    // Se llega aquí incluso después de intentar resolver por DNS-over-HTTPS como
+                    // respaldo (FallbackDns), así que ya no es un simple corte de red: apunta a
+                    // que algo en la red específicamente bloquea este dominio.
+                    return TextFetchResult.Error(
+                        "No se pudo conectar con el servidor de Gemini (generativelanguage.googleapis.com) " +
+                            "tras $maxAttempts intentos, incluso probando una resolución DNS alternativa. " +
+                            "Es probable que tu red (operador, DNS privado o VPN) esté bloqueando ese dominio " +
+                            "específico, no un problema general de tu internet. Prueba cambiar de WiFi a datos " +
+                            "móviles (o viceversa), desactivar un DNS privado/VPN si tienes uno activo, y reintenta."
+                    )
                 }
                 Thread.sleep(800L * (attempt + 1))
             } catch (e: java.io.IOException) {
