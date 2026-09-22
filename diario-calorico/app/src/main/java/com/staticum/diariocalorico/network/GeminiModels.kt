@@ -9,7 +9,10 @@ data class NutritionEstimate(
     val carbsGrams: Double,
     val fatGrams: Double,
     val detectedFoods: List<String>,
-    val confidenceNote: String = ""
+    val confidenceNote: String = "",
+    val benefits: String = "",
+    val drawbacks: String = "",
+    val frequencyAdvice: String = ""
 )
 
 sealed class GeminiResult {

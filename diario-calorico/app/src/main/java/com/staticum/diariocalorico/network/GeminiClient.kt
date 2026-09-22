@@ -338,6 +338,10 @@ class GeminiClient(private val apiKey: String) {
             $notePart
             $multiPhotoPart
             $labelPart
+            Además de la estimación nutricional, actúa como nutricionista educador: explica en términos simples
+            los beneficios de lo detectado, sus aspectos menos beneficiosos, y si conviene consumirlo con
+            frecuencia o no y por qué. El objetivo es que la persona vaya ganando conciencia sobre lo que come,
+            así que sé concreto y evita generalidades vacías.
             Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional) con este formato exacto:
             {
               "calories": <entero, kcal totales>,
@@ -345,7 +349,10 @@ class GeminiClient(private val apiKey: String) {
               "carbsGrams": <número, gramos de carbohidratos>,
               "fatGrams": <número, gramos de grasa>,
               "detectedFoods": [<lista de strings con los alimentos detectados>],
-              "confidenceNote": "<breve nota sobre la confianza o supuestos de la estimación, en español>"
+              "confidenceNote": "<breve nota sobre la confianza o supuestos de la estimación, en español>",
+              "benefits": "<1-3 frases sobre los aspectos nutricionales positivos de lo detectado, en español>",
+              "drawbacks": "<1-3 frases sobre los aspectos menos beneficiosos o a moderar, en español>",
+              "frequencyAdvice": "<1-2 frases indicando si conviene consumirlo frecuentemente o no, y por qué, en español>"
             }
         """.trimIndent()
     }

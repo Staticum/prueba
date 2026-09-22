@@ -203,10 +203,7 @@ fun AddMealScreen(
                     CircularProgressIndicator()
                 }
                 is AnalysisState.Failed -> Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
-                is AnalysisState.Done -> Text(
-                    "Nota de confianza: ${state.estimate.confidenceNote}",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                is AnalysisState.Done -> NutritionalInsightCard(state.estimate)
                 else -> {}
             }
 
@@ -231,6 +228,35 @@ fun AddMealScreen(
                 ) { Text("Guardar") }
             }
         }
+    }
+}
+
+@Composable
+private fun NutritionalInsightCard(estimate: com.staticum.diariocalorico.network.NutritionEstimate) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Aprende sobre lo que comiste", style = MaterialTheme.typography.titleSmall)
+            if (estimate.confidenceNote.isNotBlank()) {
+                Text("Nota de confianza: ${estimate.confidenceNote}", style = MaterialTheme.typography.bodySmall)
+            }
+            if (estimate.benefits.isNotBlank()) {
+                InsightRow("Beneficios", estimate.benefits)
+            }
+            if (estimate.drawbacks.isNotBlank()) {
+                InsightRow("A tener en cuenta", estimate.drawbacks)
+            }
+            if (estimate.frequencyAdvice.isNotBlank()) {
+                InsightRow("¿Consumo frecuente?", estimate.frequencyAdvice)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InsightRow(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
