@@ -25,4 +25,22 @@ object PhotoFiles {
         }
         return dest
     }
+
+    /**
+     * Reutilizar una foto ya usada en otra comida crea una copia independiente en vez de
+     * apuntar al mismo archivo: así, si esa comida original se elimina, no se pierde la foto
+     * de la comida nueva (los archivos de fotos no se borran al eliminar una comida, pero
+     * mantenerlos independientes evita cualquier acoplamiento futuro).
+     */
+    fun copyFromFile(context: Context, source: File): File {
+        val dest = File(photosDir(context), "photo_${Instant.now().toEpochMilli()}_${(0..9999).random()}.jpg")
+        source.inputStream().use { input ->
+            FileOutputStream(dest).use { output -> input.copyTo(output) }
+        }
+        return dest
+    }
+
+    /** Todas las fotos usadas alguna vez en comidas, más recientes primero. */
+    fun listPreviousPhotos(context: Context): List<File> =
+        photosDir(context).listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
 }

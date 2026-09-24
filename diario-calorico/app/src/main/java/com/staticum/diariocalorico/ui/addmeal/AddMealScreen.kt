@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -127,6 +132,8 @@ fun AddMealScreen(
         uri?.let { viewModel.addLabelPhoto(PhotoFiles.copyFromUri(context, it)) }
     }
 
+    var previousPhotosTargetIsLabel by remember { mutableStateOf<Boolean?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(if (form.editingMealId != null) "Editar comida" else "Nueva comida") })
@@ -160,6 +167,7 @@ fun AddMealScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { launchCamera(isLabel = false) }) { Text("Cámara") }
                 OutlinedButton(onClick = { foodGalleryLauncher.launch("image/*") }) { Text("Galería") }
+                OutlinedButton(onClick = { previousPhotosTargetIsLabel = false }) { Text("Anteriores") }
             }
             Text(
                 "Si tu comida tiene varios platos (ej. entrada, fondo, postre), agrega una foto de cada uno; se estiman como una sola comida.",
@@ -177,6 +185,7 @@ fun AddMealScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { launchCamera(isLabel = true) }) { Text("+ Etiqueta (cámara)") }
                 OutlinedButton(onClick = { labelGalleryLauncher.launch("image/*") }) { Text("+ Etiqueta (galería)") }
+                OutlinedButton(onClick = { previousPhotosTargetIsLabel = true }) { Text("+ Anteriores") }
             }
 
             HorizontalDivider()
@@ -229,6 +238,55 @@ fun AddMealScreen(
             }
         }
     }
+
+    previousPhotosTargetIsLabel?.let { isLabel ->
+        PreviousPhotosDialog(
+            onDismiss = { previousPhotosTargetIsLabel = null },
+            onSelected = { file ->
+                val copy = PhotoFiles.copyFromFile(context, file)
+                if (isLabel) viewModel.addLabelPhoto(copy) else viewModel.addFoodPhoto(copy)
+                previousPhotosTargetIsLabel = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun PreviousPhotosDialog(onDismiss: () -> Unit, onSelected: (File) -> Unit) {
+    val context = LocalContext.current
+    val photos = remember { PhotoFiles.listPreviousPhotos(context) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Fotos anteriores") },
+        text = {
+            if (photos.isEmpty()) {
+                Text("Todavía no tienes fotos usadas en comidas anteriores.")
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.height(320.dp)
+                ) {
+                    gridItems(photos) { file ->
+                        Image(
+                            painter = rememberAsyncImagePainter(file),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(96.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.LightGray)
+                                .clickable { onSelected(file) },
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cerrar") } }
+    )
 }
 
 @Composable
