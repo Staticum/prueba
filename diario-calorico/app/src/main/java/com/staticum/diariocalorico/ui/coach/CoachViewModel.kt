@@ -3,6 +3,7 @@ package com.staticum.diariocalorico.ui.coach
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.diariocalorico.data.DailyGoals
+import com.staticum.diariocalorico.data.GeminiLogRepository
 import com.staticum.diariocalorico.data.MealEntry
 import com.staticum.diariocalorico.data.MealRepository
 import com.staticum.diariocalorico.data.TrackingRepository
@@ -20,7 +21,7 @@ import java.time.ZoneId
 
 sealed class CoachState {
     object Idle : CoachState()
-    object Loading : CoachState()
+    data class Loading(val progress: String = "Analizando...") : CoachState()
     data class Done(val advice: String) : CoachState()
     data class Failed(val message: String) : CoachState()
 }
@@ -41,7 +42,8 @@ data class CoachUiState(
 class CoachViewModel(
     private val repository: MealRepository,
     private val userPreferences: UserPreferences,
-    private val trackingRepository: TrackingRepository
+    private val trackingRepository: TrackingRepository,
+    private val geminiLogRepository: GeminiLogRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CoachUiState())
@@ -86,11 +88,16 @@ class CoachViewModel(
             return
         }
 
-        _uiState.value = _uiState.value.copy(coachState = CoachState.Loading)
+        _uiState.value = _uiState.value.copy(coachState = CoachState.Loading())
         viewModelScope.launch {
             val prompt = buildPrompt(_uiState.value)
-            val client = GeminiClient(apiKey)
-            when (val result = client.getDailyAdvice(prompt)) {
+            val client = GeminiClient(apiKey, onLog = { entry -> geminiLogRepository.log(entry) })
+            val result = client.getDailyAdvice(
+                prompt,
+                context = "coach-today",
+                onProgress = { progress -> _uiState.value = _uiState.value.copy(coachState = CoachState.Loading(progress)) }
+            )
+            when (result) {
                 is CoachResult.Success -> _uiState.value = _uiState.value.copy(coachState = CoachState.Done(result.advice))
                 is CoachResult.Error -> _uiState.value = _uiState.value.copy(coachState = CoachState.Failed(result.message))
             }

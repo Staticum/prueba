@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -25,12 +26,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.staticum.diariocalorico.data.DailyGoals
 
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(state.logExportUri) {
+        state.logExportUri?.let { uri ->
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, "Compartir log de Gemini"))
+            viewModel.consumeLogExportUri()
+        }
+    }
     var apiKeyField by remember { mutableStateOf(state.apiKey) }
     var caloriesField by remember { mutableStateOf(state.goals.calories.toString()) }
     var proteinField by remember { mutableStateOf(state.goals.proteinGrams.toString()) }
@@ -89,6 +104,10 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     )
                 )
             }) { Text("Guardar metas") }
+
+            Text("Diagnóstico")
+            OutlinedButton(onClick = { viewModel.exportGeminiLog() }) { Text("Exportar log de fallos de Gemini") }
+            state.logExportMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
             Text("Versión instalada: ${state.versionName}")
             OutlinedButton(onClick = { viewModel.checkForUpdate() }) { Text("Buscar actualizaciones") }

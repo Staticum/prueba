@@ -3,6 +3,7 @@ package com.staticum.diariocalorico.ui.addmeal
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.staticum.diariocalorico.data.GeminiLogRepository
 import com.staticum.diariocalorico.data.MealEntry
 import com.staticum.diariocalorico.data.MealRepository
 import com.staticum.diariocalorico.data.MealType
@@ -18,9 +19,11 @@ import java.time.Instant
 
 sealed class AnalysisState {
     object Idle : AnalysisState()
-    object Loading : AnalysisState()
+    data class Loading(val progress: String = "Analizando...") : AnalysisState()
     data class Done(val estimate: NutritionEstimate) : AnalysisState()
     data class Failed(val message: String) : AnalysisState()
+    /** Gemini no respondió a tiempo: la comida ya se guardó pendiente y se reintentará sola. */
+    object AutoSavedPending : AnalysisState()
 }
 
 data class AddMealFormState(
@@ -39,7 +42,8 @@ data class AddMealFormState(
 
 class AddMealViewModel(
     private val repository: MealRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val geminiLogRepository: GeminiLogRepository
 ) : ViewModel() {
 
     private val _form = MutableStateFlow(AddMealFormState())
@@ -134,7 +138,8 @@ class AddMealViewModel(
     }
 
     fun analyzeWithGemini() {
-        val photos = _form.value.foodPhotos
+        val f = _form.value
+        val photos = f.foodPhotos
         if (photos.isEmpty()) {
             _analysisState.value = AnalysisState.Failed("Primero toma o selecciona al menos una foto del alimento")
             return
@@ -145,10 +150,15 @@ class AddMealViewModel(
             return
         }
 
-        _analysisState.value = AnalysisState.Loading
+        _analysisState.value = AnalysisState.Loading()
         viewModelScope.launch {
-            val client = GeminiClient(apiKey)
-            when (val result = client.estimateNutrition(photos, _form.value.labelPhotos, _form.value.userNote)) {
+            val client = GeminiClient(apiKey, onLog = { entry -> geminiLogRepository.log(entry) })
+            val result = client.estimateNutrition(
+                photos, f.labelPhotos, f.userNote,
+                context = if (f.editingMealId != null) "edit-meal:${f.editingMealId}" else "add-meal:new",
+                onProgress = { progress -> _analysisState.value = AnalysisState.Loading(progress) }
+            )
+            when (result) {
                 is GeminiResult.Success -> {
                     val estimate = result.estimate
                     updateEditableFields(
@@ -160,9 +170,38 @@ class AddMealViewModel(
                     )
                     _analysisState.value = AnalysisState.Done(estimate)
                 }
-                is GeminiResult.Error -> _analysisState.value = AnalysisState.Failed(result.message)
+                is GeminiResult.Error -> {
+                    // Ante un error transitorio (red/timeout, no un problema de configuración
+                    // como la API key), no tiene sentido dejar a la persona esperando o forzarla
+                    // a reintentar manualmente: se guarda la comida como pendiente y un proceso
+                    // en segundo plano la reintenta solo, cada cierto tiempo, hasta lograrlo.
+                    if (f.editingMealId == null && !GeminiClient.isFatalError(result.message)) {
+                        autoSaveAsPending(f)
+                    } else {
+                        _analysisState.value = AnalysisState.Failed(result.message)
+                    }
+                }
             }
         }
+    }
+
+    private suspend fun autoSaveAsPending(f: AddMealFormState) {
+        val entry = MealEntry(
+            consumedAt = f.consumedAt,
+            mealType = f.mealType,
+            description = f.userNote,
+            foodPhotoPath = f.foodPhotos.first().absolutePath,
+            calories = 0,
+            proteinGrams = 0.0,
+            carbsGrams = 0.0,
+            fatGrams = 0.0,
+            detectedFoods = "Análisis pendiente (Gemini no respondió; se reintentará solo)",
+            analysisPending = true
+        )
+        val extraFoodPhotos = f.foodPhotos.drop(1).map { it.absolutePath }
+        val labelPhotos = f.labelPhotos.map { it.absolutePath }
+        repository.saveMeal(entry, extraFoodPhotos, labelPhotos)
+        _analysisState.value = AnalysisState.AutoSavedPending
     }
 
     fun saveMeal(context: Context, onSaved: () -> Unit, onError: (String) -> Unit) {

@@ -3,6 +3,7 @@ package com.staticum.diariocalorico.ui.daydetail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.diariocalorico.data.DailyGoals
+import com.staticum.diariocalorico.data.GeminiLogRepository
 import com.staticum.diariocalorico.data.MealEntry
 import com.staticum.diariocalorico.data.MealRepository
 import com.staticum.diariocalorico.data.MealWithPhotos
@@ -23,7 +24,7 @@ import java.time.ZoneId
 
 sealed class DayAnalysisState {
     object Idle : DayAnalysisState()
-    object Loading : DayAnalysisState()
+    data class Loading(val progress: String = "Analizando...") : DayAnalysisState()
     data class Done(val advice: String) : DayAnalysisState()
     data class Failed(val message: String) : DayAnalysisState()
 }
@@ -44,7 +45,8 @@ class DayDetailViewModel(
     private val date: LocalDate,
     private val repository: MealRepository,
     private val userPreferences: UserPreferences,
-    private val trackingRepository: TrackingRepository
+    private val trackingRepository: TrackingRepository,
+    private val geminiLogRepository: GeminiLogRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DayDetailUiState(date = date))
@@ -90,7 +92,7 @@ class DayDetailViewModel(
             return
         }
 
-        _uiState.value = _uiState.value.copy(analysisState = DayAnalysisState.Loading)
+        _uiState.value = _uiState.value.copy(analysisState = DayAnalysisState.Loading())
         viewModelScope.launch {
             val weight = trackingRepository.getWeightsBetween(
                 date.atStartOfDay(zone).toInstant(),
@@ -98,8 +100,13 @@ class DayDetailViewModel(
             ).lastOrNull() ?: trackingRepository.observeLatestWeight().first()
 
             val prompt = buildPrompt(_uiState.value, weight?.weightKg)
-            val client = GeminiClient(apiKey)
-            when (val result = client.getDailyAdvice(prompt)) {
+            val client = GeminiClient(apiKey, onLog = { entry -> geminiLogRepository.log(entry) })
+            val result = client.getDailyAdvice(
+                prompt,
+                context = "day-analysis:$date",
+                onProgress = { progress -> _uiState.value = _uiState.value.copy(analysisState = DayAnalysisState.Loading(progress)) }
+            )
+            when (result) {
                 is CoachResult.Success -> _uiState.value = _uiState.value.copy(analysisState = DayAnalysisState.Done(result.advice))
                 is CoachResult.Error -> _uiState.value = _uiState.value.copy(analysisState = DayAnalysisState.Failed(result.message))
             }

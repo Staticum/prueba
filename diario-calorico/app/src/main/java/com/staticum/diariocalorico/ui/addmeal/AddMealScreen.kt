@@ -208,12 +208,25 @@ fun AddMealScreen(
             ) { Text("Analizar con Gemini") }
 
             when (val state = analysisState) {
-                is AnalysisState.Loading -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                is AnalysisState.Loading -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     CircularProgressIndicator()
+                    Text(state.progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 is AnalysisState.Failed -> Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
                 is AnalysisState.Done -> NutritionalInsightCard(state.estimate)
+                is AnalysisState.AutoSavedPending -> Text(
+                    "Gemini no respondió a tiempo. La comida se guardó igual; el análisis se reintentará solo en segundo plano y te avisaremos cuando esté listo.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
                 else -> {}
+            }
+
+            LaunchedEffect(analysisState) {
+                if (analysisState is AnalysisState.AutoSavedPending) {
+                    kotlinx.coroutines.delay(1800)
+                    onSaved()
+                }
             }
 
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {

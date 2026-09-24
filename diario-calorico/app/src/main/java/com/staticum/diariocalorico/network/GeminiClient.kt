@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -28,6 +29,14 @@ private sealed class TextFetchResult {
     data class Success(val text: String) : TextFetchResult()
     data class Error(val message: String) : TextFetchResult()
 }
+
+/** Un fallo puntual (de un modelo/intento) durante una llamada a Gemini, para diagnóstico posterior. */
+data class GeminiAttemptLog(
+    val timestamp: Instant,
+    val context: String,
+    val model: String?,
+    val message: String
+)
 
 /**
  * Algunas operadoras/redes filtran o tienen resolución DNS poco confiable específicamente para
@@ -74,12 +83,19 @@ private class FallbackDns : Dns {
     }
 }
 
-class GeminiClient(private val apiKey: String) {
+class GeminiClient(
+    private val apiKey: String,
+    private val onLog: suspend (GeminiAttemptLog) -> Unit = {}
+) {
 
+    // Timeouts acotados a propósito: antes (30s/60s) un intento fallido podía tardar hasta
+    // 90s en reportarse, y con varios modelos de respaldo y reintentos la app podía quedar
+    // "pensando" varios minutos sin ninguna señal de que algo falló. Con timeouts más cortos
+    // el límite global (ver overallTimeoutMs en fetchTextWithFallback) se respeta de verdad.
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(18, TimeUnit.SECONDS)
+        .writeTimeout(18, TimeUnit.SECONDS)
         .dns(FallbackDns())
         .build()
 
@@ -99,7 +115,10 @@ class GeminiClient(private val apiKey: String) {
     suspend fun estimateNutrition(
         foodPhotos: List<File>,
         labelPhotos: List<File>,
-        userNote: String
+        userNote: String,
+        context: String = "meal",
+        overallTimeoutMs: Long = 30_000,
+        onProgress: (String) -> Unit = {}
     ): GeminiResult = withContext(Dispatchers.IO) {
         val prompt = buildEstimatePrompt(userNote, labelPhotos.isNotEmpty(), foodPhotos.size)
         val parts = buildJsonArray {
@@ -109,7 +128,7 @@ class GeminiClient(private val apiKey: String) {
         }
         val requestBody = buildRequestBody(parts, jsonResponse = true)
 
-        when (val result = fetchTextWithFallback(requestBody)) {
+        when (val result = fetchTextWithFallback(requestBody, context, overallTimeoutMs, onProgress)) {
             is TextFetchResult.Success -> parseEstimate(result.text)
             is TextFetchResult.Error -> GeminiResult.Error(result.message)
         }
@@ -120,11 +139,16 @@ class GeminiClient(private val apiKey: String) {
      * a partir de un resumen textual ya armado por la UI (comidas, metas, gasto, peso, contexto
      * adicional del usuario). No usa imágenes.
      */
-    suspend fun getDailyAdvice(prompt: String): CoachResult = withContext(Dispatchers.IO) {
+    suspend fun getDailyAdvice(
+        prompt: String,
+        context: String = "coach",
+        overallTimeoutMs: Long = 30_000,
+        onProgress: (String) -> Unit = {}
+    ): CoachResult = withContext(Dispatchers.IO) {
         val parts = buildJsonArray { add(buildJsonObject { put("text", prompt) }) }
         val requestBody = buildRequestBody(parts, jsonResponse = false)
 
-        when (val result = fetchTextWithFallback(requestBody)) {
+        when (val result = fetchTextWithFallback(requestBody, context, overallTimeoutMs, onProgress)) {
             is TextFetchResult.Success -> CoachResult.Success(result.text.trim())
             is TextFetchResult.Error -> CoachResult.Error(result.message)
         }
@@ -144,15 +168,28 @@ class GeminiClient(private val apiKey: String) {
             })
         }.toString()
 
-    private fun fetchTextWithFallback(requestBody: String): TextFetchResult {
+    private suspend fun fetchTextWithFallback(
+        requestBody: String,
+        context: String,
+        overallTimeoutMs: Long,
+        onProgress: (String) -> Unit
+    ): TextFetchResult {
         var lastError: TextFetchResult.Error? = null
         val triedModels = mutableSetOf<String>()
+        // Límite global de espera: antes de esto, cada modelo agotaba sus propios reintentos
+        // sin ningún tope conjunto, así que una racha de fallos podía dejar a la app "pensando"
+        // varios minutos sin mostrar nada. Ahora, pasado este plazo, se corta y se reporta el
+        // último error conocido en vez de seguir probando modelos en silencio.
+        val deadline = System.currentTimeMillis() + overallTimeoutMs
 
         for (model in modelFallbackOrder) {
+            if (System.currentTimeMillis() >= deadline) break
             triedModels += model
-            val result = fetchModelText(model, requestBody)
+            onProgress("Probando $model...")
+            val result = fetchModelText(model, requestBody, deadline)
             if (result is TextFetchResult.Success) return result
             lastError = result as TextFetchResult.Error
+            onLog(GeminiAttemptLog(Instant.now(), context, model, result.message))
             // Solo se aborta de inmediato ante errores que ningún otro modelo va a resolver
             // (clave inválida, permisos, request malformado). Todo lo demás (modelo caído,
             // sobrecargado o removido) sigue probando el siguiente de la lista.
@@ -160,15 +197,28 @@ class GeminiClient(private val apiKey: String) {
         }
 
         // Si todos los modelos conocidos fallaron (ej. Google renombró/removió modelos otra vez),
-        // se consulta el catálogo real de modelos disponibles y se prueba con el resto.
-        for (model in discoverFallbackModels(triedModels)) {
-            triedModels += model
-            val result = fetchModelText(model, requestBody)
-            if (result is TextFetchResult.Success) return result
-            lastError = result as TextFetchResult.Error
+        // se consulta el catálogo real de modelos disponibles y se prueba con el resto, siempre
+        // que todavía quede tiempo dentro del límite global.
+        if (System.currentTimeMillis() < deadline) {
+            onProgress("Buscando modelos disponibles...")
+            for (model in discoverFallbackModels(triedModels)) {
+                if (System.currentTimeMillis() >= deadline) break
+                triedModels += model
+                onProgress("Probando $model...")
+                val result = fetchModelText(model, requestBody, deadline)
+                if (result is TextFetchResult.Success) return result
+                lastError = result as TextFetchResult.Error
+                onLog(GeminiAttemptLog(Instant.now(), context, model, result.message))
+            }
         }
 
-        return lastError ?: TextFetchResult.Error("No se pudo contactar a ningún modelo de Gemini")
+        val timeoutNote = if (System.currentTimeMillis() >= deadline) {
+            " (se agotó el tiempo de espera de ${overallTimeoutMs / 1000}s probando modelos)"
+        } else ""
+        return lastError?.let { TextFetchResult.Error(it.message + timeoutNote) }
+            ?: TextFetchResult.Error("No se pudo contactar a ningún modelo de Gemini$timeoutNote").also {
+                onLog(GeminiAttemptLog(Instant.now(), context, null, it.message))
+            }
     }
 
     private fun discoverFallbackModels(alreadyTried: Set<String>): List<String> {
@@ -201,21 +251,31 @@ class GeminiClient(private val apiKey: String) {
         }
     }
 
-    private fun isFatalError(message: String): Boolean =
-        message.contains("400") || message.contains("401") || message.contains("403") ||
-            message.contains("API key", ignoreCase = true) ||
-            message.contains("PERMISSION_DENIED", ignoreCase = true) ||
-            message.contains("INVALID_ARGUMENT", ignoreCase = true) ||
-            message.contains("No se pudo conectar con el servidor de Gemini")
+    companion object {
+        /**
+         * Errores que ningún reintento automático (ni en primer plano ni en segundo plano) va
+         * a resolver por sí solo: requieren que el usuario corrija algo (ej. la API key). Se
+         * expone públicamente para que la UI decida no reintentar/guardar como pendiente ante
+         * este tipo de errores.
+         */
+        fun isFatalError(message: String): Boolean =
+            message.contains("400") || message.contains("401") || message.contains("403") ||
+                message.contains("API key", ignoreCase = true) ||
+                message.contains("PERMISSION_DENIED", ignoreCase = true) ||
+                message.contains("INVALID_ARGUMENT", ignoreCase = true)
+    }
 
-    private fun fetchModelText(model: String, requestBody: String): TextFetchResult {
+    private fun fetchModelText(model: String, requestBody: String, deadline: Long): TextFetchResult {
         // Un corte de red o un fallo de DNS puntual (muy común en 4G/5G real, aunque el
         // promedio de la conexión sea bueno: el resolver del teléfono a veces falla en un
         // intento aislado) no debería tirar todo el intento: se reintenta antes de pasar al
         // siguiente modelo o reportar el error. UnknownHostException también se reintenta,
         // con una pequeña pausa para darle tiempo al resolver DNS del sistema a recuperarse.
-        val maxAttempts = 3
+        // Se limita a 2 intentos (antes 3) para que el límite global de espera se respete con
+        // margen, en vez de que un solo modelo agote casi todo el presupuesto de tiempo.
+        val maxAttempts = 2
         repeat(maxAttempts) { attempt ->
+            if (System.currentTimeMillis() >= deadline) return TextFetchResult.Error("Se agotó el tiempo de espera antes de completar el intento con $model")
             try {
                 val request = Request.Builder()
                     .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")

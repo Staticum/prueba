@@ -56,4 +56,7 @@ interface MealDao {
         """
     )
     suspend fun getFrequentMeals(): List<MealEntry>
+
+    @Query("SELECT * FROM meal_entries WHERE analysisPending = 1")
+    suspend fun getPendingAnalysisMeals(): List<MealEntry>
 }

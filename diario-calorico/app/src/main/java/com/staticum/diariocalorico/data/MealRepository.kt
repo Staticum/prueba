@@ -41,4 +41,6 @@ class MealRepository(private val dao: MealDao) {
         dao.getMealsBetween(start, end)
 
     suspend fun getFrequentMeals(): List<MealEntry> = dao.getFrequentMeals()
+
+    suspend fun getPendingAnalysisMeals(): List<MealEntry> = dao.getPendingAnalysisMeals()
 }

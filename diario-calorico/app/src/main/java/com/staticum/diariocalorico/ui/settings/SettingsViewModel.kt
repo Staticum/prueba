@@ -2,10 +2,13 @@ package com.staticum.diariocalorico.ui.settings
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.staticum.diariocalorico.data.DailyGoals
+import com.staticum.diariocalorico.data.GeminiLogRepository
 import com.staticum.diariocalorico.data.UserPreferences
+import com.staticum.diariocalorico.export.GeminiLogExporter
 import com.staticum.diariocalorico.update.ApkDownloader
 import com.staticum.diariocalorico.update.ReleaseInfo
 import com.staticum.diariocalorico.update.UpdateCheckResult
@@ -22,12 +25,15 @@ data class SettingsUiState(
     val versionName: String = "",
     val updateStatus: String = "",
     val updateAvailable: ReleaseInfo? = null,
-    val downloadProgress: Float? = null
+    val downloadProgress: Float? = null,
+    val logExportUri: Uri? = null,
+    val logExportMessage: String? = null
 )
 
 class SettingsViewModel(
     private val userPreferences: UserPreferences,
-    private val appContext: Context
+    private val appContext: Context,
+    private val geminiLogRepository: GeminiLogRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -76,6 +82,22 @@ class SettingsViewModel(
                 )
             }
         }
+    }
+
+    fun exportGeminiLog() {
+        viewModelScope.launch {
+            val entries = geminiLogRepository.getAll()
+            if (entries.isEmpty()) {
+                _uiState.value = _uiState.value.copy(logExportMessage = "Aún no hay fallos de Gemini registrados.", logExportUri = null)
+                return@launch
+            }
+            val uri = GeminiLogExporter.export(appContext, entries)
+            _uiState.value = _uiState.value.copy(logExportUri = uri, logExportMessage = null)
+        }
+    }
+
+    fun consumeLogExportUri() {
+        _uiState.value = _uiState.value.copy(logExportUri = null)
     }
 
     fun downloadAndInstallUpdate() {

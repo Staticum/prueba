@@ -50,13 +50,13 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
         }
         composable(Routes.COACH) {
             val vm: CoachViewModel = viewModel(factory = LambdaViewModelFactory {
-                CoachViewModel(app.repository, app.userPreferences, app.trackingRepository)
+                CoachViewModel(app.repository, app.userPreferences, app.trackingRepository, app.geminiLogRepository)
             })
             CoachScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
         composable(Routes.ADD_MEAL) {
             val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
-                AddMealViewModel(app.repository, app.userPreferences)
+                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository)
             })
             AddMealScreen(
                 viewModel = vm,
@@ -70,7 +70,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
         ) { backStackEntry ->
             val mealId = backStackEntry.arguments?.getLong("mealId") ?: return@composable
             val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
-                AddMealViewModel(app.repository, app.userPreferences)
+                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository)
             })
             androidx.compose.runtime.LaunchedEffect(mealId) { vm.loadForEdit(mealId) }
             AddMealScreen(
@@ -95,7 +95,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
             val epochDay = backStackEntry.arguments?.getLong("epochDay") ?: return@composable
             val date = LocalDate.ofEpochDay(epochDay)
             val vm: DayDetailViewModel = viewModel(factory = LambdaViewModelFactory {
-                DayDetailViewModel(date, app.repository, app.userPreferences, app.trackingRepository)
+                DayDetailViewModel(date, app.repository, app.userPreferences, app.trackingRepository, app.geminiLogRepository)
             })
             DayDetailScreen(
                 viewModel = vm,
@@ -111,7 +111,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
             val epochDay = backStackEntry.arguments?.getLong("epochDay") ?: return@composable
             val date = LocalDate.ofEpochDay(epochDay)
             val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
-                AddMealViewModel(app.repository, app.userPreferences)
+                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository)
             })
             androidx.compose.runtime.LaunchedEffect(date) { vm.presetDate(date) }
             AddMealScreen(
@@ -128,7 +128,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
         }
         composable(Routes.SETTINGS) {
             val vm: SettingsViewModel = viewModel(factory = LambdaViewModelFactory {
-                SettingsViewModel(app.userPreferences, app)
+                SettingsViewModel(app.userPreferences, app, app.geminiLogRepository)
             })
             SettingsScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }

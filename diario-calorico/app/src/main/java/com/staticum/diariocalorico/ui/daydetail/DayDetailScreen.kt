@@ -116,8 +116,9 @@ fun DayDetailScreen(
 
             item {
                 when (val analysis = state.analysisState) {
-                    is DayAnalysisState.Loading -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    is DayAnalysisState.Loading -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         CircularProgressIndicator()
+                        Text(analysis.progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     is DayAnalysisState.Failed -> Text("Error: ${analysis.message}", color = MaterialTheme.colorScheme.error)
                     is DayAnalysisState.Done -> Card(

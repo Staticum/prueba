@@ -16,5 +16,6 @@ data class MealEntry(
     val carbsGrams: Double,
     val fatGrams: Double,
     val detectedFoods: String,
-    val createdAt: Instant = Instant.now()
+    val createdAt: Instant = Instant.now(),
+    val analysisPending: Boolean = false
 )

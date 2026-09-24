@@ -78,7 +78,10 @@ fun CoachScreen(viewModel: CoachViewModel, onBack: () -> Unit) {
             ) { Text("Analizar mi día con Gemini") }
 
             when (val coachState = state.coachState) {
-                is CoachState.Loading -> CircularProgressIndicator(modifier = Modifier.padding(top = 8.dp))
+                is CoachState.Loading -> Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    CircularProgressIndicator(modifier = Modifier.padding(top = 8.dp))
+                    Text(coachState.progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 is CoachState.Failed -> Text("Error: ${coachState.message}", color = MaterialTheme.colorScheme.error)
                 is CoachState.Done -> Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
