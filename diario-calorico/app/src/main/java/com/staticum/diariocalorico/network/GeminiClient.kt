@@ -104,12 +104,18 @@ class GeminiClient(
     /**
      * Orden de modelos a intentar. Si uno responde con error transitorio (503/429, sobrecarga
      * o modelo no disponible) se reintenta con el siguiente antes de reportar fallo al usuario.
+     *
+     * "gemini-flash-latest" va primero a propósito: es un alias que Google mantiene apuntando
+     * siempre al modelo flash vigente, así que no debería quedar obsoleto nunca (a diferencia de
+     * nombres de versión fija como "gemini-3.6-flash", que Google puede retirar en cualquier
+     * momento, como ya pasó antes con 2.0 y 2.5). Los nombres fijos quedan como respaldo por si
+     * el alias fallara por algún motivo puntual.
      */
     private val modelFallbackOrder = listOf(
+        "gemini-flash-latest",
         "gemini-3.6-flash",
         "gemini-3.5-flash",
-        "gemini-3.7-flash",
-        "gemini-flash-latest"
+        "gemini-3.7-flash"
     )
 
     suspend fun estimateNutrition(
@@ -221,6 +227,18 @@ class GeminiClient(
             }
     }
 
+    /**
+     * Nombres de versión que Google ya retiró para usuarios nuevos, comprobado en el campo
+     * (siguen apareciendo en el catálogo de /v1beta/models con "generateContent" soportado,
+     * pero responden 404 al llamarlos). El catálogo por sí solo no distingue "listado" de
+     * "realmente disponible", así que se excluyen a mano en vez de perder tiempo probándolos.
+     */
+    private val knownRetiredVersionMarkers = listOf("-2.0-", "-2.5-", "-1.0-", "-1.5-")
+
+    /** Extrae el número de versión de un nombre de modelo (ej. "gemini-3.5-flash" -> 3.5). */
+    private fun extractVersion(name: String): Double =
+        Regex("""gemini-(\d+(?:\.\d+)?)""").find(name)?.groupValues?.get(1)?.toDoubleOrNull() ?: -1.0
+
     private fun discoverFallbackModels(alreadyTried: Set<String>): List<String> {
         return try {
             val request = Request.Builder()
@@ -243,7 +261,14 @@ class GeminiClient(
                     .mapNotNull { model ->
                         (model["name"] as? JsonPrimitive)?.content?.removePrefix("models/")
                     }
-                    .filter { name -> "flash" in name.lowercase() && name !in alreadyTried }
+                    .filter { name ->
+                        "flash" in name.lowercase() && name !in alreadyTried &&
+                            knownRetiredVersionMarkers.none { marker -> marker in name }
+                    }
+                    // El catálogo no viene ordenado por vigencia: se prueba primero el número de
+                    // versión más alto (el "-latest" real, sin número, va al final de este orden,
+                    // pero ya se intentó explícitamente antes vía modelFallbackOrder).
+                    .sortedByDescending { name -> extractVersion(name) }
                     .take(3)
             }
         } catch (e: Exception) {
