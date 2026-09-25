@@ -108,7 +108,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             Text("Diagnóstico")
             OutlinedButton(onClick = { viewModel.retryPendingAnalysisNow() }) { Text("Reintentar análisis pendientes ahora") }
             Text(
-                "Si tu teléfono restringe apps en segundo plano por batería (frecuente en Motorola), el reintento automático cada 2 horas puede no ejecutarse solo: usa este botón para forzarlo.",
+                "Las comidas marcadas \"Análisis pendiente\" no se reintentan solas (para no gastar la cuota gratuita de Gemini sin que lo notes): usa este botón cuando quieras que se vuelvan a analizar.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

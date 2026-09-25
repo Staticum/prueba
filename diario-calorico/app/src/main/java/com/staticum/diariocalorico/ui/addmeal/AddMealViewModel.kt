@@ -173,8 +173,8 @@ class AddMealViewModel(
                 is GeminiResult.Error -> {
                     // Ante un error transitorio (red/timeout/sobrecarga, no un problema de
                     // configuración como la API key), no tiene sentido dejar a la persona
-                    // esperando o forzarla a reintentar manualmente: se guarda como pendiente y
-                    // un proceso en segundo plano la reintenta solo, cada cierto tiempo.
+                    // esperando: se guarda como pendiente y se puede reintentar más tarde desde
+                    // Ajustes, sin gastar cuota de Gemini reintentando sola en segundo plano.
                     if (!GeminiClient.isFatalError(result.message)) {
                         if (f.editingMealId != null) markExistingAsPending(f) else autoSaveAsPending(f)
                     } else {
@@ -195,7 +195,7 @@ class AddMealViewModel(
             proteinGrams = 0.0,
             carbsGrams = 0.0,
             fatGrams = 0.0,
-            detectedFoods = "Análisis pendiente (Gemini no respondió; se reintentará solo)",
+            detectedFoods = "Análisis pendiente (Gemini no respondió; reintenta desde Ajustes)",
             analysisPending = true
         )
         val extraFoodPhotos = f.foodPhotos.drop(1).map { it.absolutePath }

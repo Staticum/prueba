@@ -104,9 +104,9 @@ class SettingsViewModel(
     }
 
     /**
-     * Dispara el reintento de comidas pendientes ahora mismo, sin esperar al ciclo periódico
-     * (cada 2 horas). Útil si el reintento automático no se ejecutó — algunos fabricantes
-     * (Motorola incluido) restringen agresivamente el trabajo en segundo plano por batería.
+     * Dispara el reintento de comidas pendientes bajo demanda. No hay reintento automático
+     * periódico: con la cuota gratuita de Gemini tan ajustada, un proceso reintentando solo
+     * cada cierto tiempo terminaba agotándola sin que la persona lo notara.
      */
     fun retryPendingAnalysisNow() {
         val request = OneTimeWorkRequestBuilder<GeminiRetryWorker>().build()

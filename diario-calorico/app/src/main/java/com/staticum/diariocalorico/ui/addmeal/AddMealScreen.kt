@@ -215,7 +215,7 @@ fun AddMealScreen(
                 is AnalysisState.Failed -> Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
                 is AnalysisState.Done -> NutritionalInsightCard(state.estimate)
                 is AnalysisState.AutoSavedPending -> Text(
-                    "Gemini no respondió a tiempo. La comida se guardó igual; el análisis se reintentará solo en segundo plano y te avisaremos cuando esté listo.",
+                    "Gemini no respondió a tiempo. La comida se guardó igual, marcada como pendiente; reinténtalo cuando quieras desde Ajustes > \"Reintentar análisis pendientes ahora\".",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
