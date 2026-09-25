@@ -235,6 +235,12 @@ class GeminiClient(
      */
     private val knownRetiredVersionMarkers = listOf("-2.0-", "-2.5-", "-1.0-", "-1.5-")
 
+    /**
+     * Variantes de "flash" que no sirven para este caso de uso (análisis de imagen + texto):
+     * no aceptan imagen como entrada aunque el catálogo las liste con generateContent.
+     */
+    private val specializedModelMarkers = listOf("-tts", "tts-", "-audio", "-live", "-image-generation", "-embedding")
+
     /** Extrae el número de versión de un nombre de modelo (ej. "gemini-3.5-flash" -> 3.5). */
     private fun extractVersion(name: String): Double =
         Regex("""gemini-(\d+(?:\.\d+)?)""").find(name)?.groupValues?.get(1)?.toDoubleOrNull() ?: -1.0
@@ -262,8 +268,14 @@ class GeminiClient(
                         (model["name"] as? JsonPrimitive)?.content?.removePrefix("models/")
                     }
                     .filter { name ->
-                        "flash" in name.lowercase() && name !in alreadyTried &&
-                            knownRetiredVersionMarkers.none { marker -> marker in name }
+                        val lower = name.lowercase()
+                        "flash" in lower && name !in alreadyTried &&
+                            knownRetiredVersionMarkers.none { marker -> marker in name } &&
+                            // Variantes especializadas que "flash" y un número de versión alto no
+                            // bastan para detectar: no aceptan imagen como entrada aunque figuren
+                            // con generateContent en el catálogo (ej. "gemini-3.8-flash-tts" ->
+                            // "Image input modality is not enabled for this model").
+                            specializedModelMarkers.none { marker -> marker in lower }
                     }
                     // El catálogo no viene ordenado por vigencia: se prueba primero el número de
                     // versión más alto (el "-latest" real, sin número, va al final de este orden,
