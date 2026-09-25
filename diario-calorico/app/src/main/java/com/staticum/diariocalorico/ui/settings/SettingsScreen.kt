@@ -106,6 +106,12 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             }) { Text("Guardar metas") }
 
             Text("Diagnóstico")
+            OutlinedButton(onClick = { viewModel.retryPendingAnalysisNow() }) { Text("Reintentar análisis pendientes ahora") }
+            Text(
+                "Si tu teléfono restringe apps en segundo plano por batería (frecuente en Motorola), el reintento automático cada 2 horas puede no ejecutarse solo: usa este botón para forzarlo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             OutlinedButton(onClick = { viewModel.exportGeminiLog() }) { Text("Exportar log de fallos de Gemini") }
             state.logExportMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 

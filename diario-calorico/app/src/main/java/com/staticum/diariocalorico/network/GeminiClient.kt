@@ -123,7 +123,7 @@ class GeminiClient(
         labelPhotos: List<File>,
         userNote: String,
         context: String = "meal",
-        overallTimeoutMs: Long = 30_000,
+        overallTimeoutMs: Long = 60_000,
         onProgress: (String) -> Unit = {}
     ): GeminiResult = withContext(Dispatchers.IO) {
         val prompt = buildEstimatePrompt(userNote, labelPhotos.isNotEmpty(), foodPhotos.size)
@@ -148,7 +148,7 @@ class GeminiClient(
     suspend fun getDailyAdvice(
         prompt: String,
         context: String = "coach",
-        overallTimeoutMs: Long = 30_000,
+        overallTimeoutMs: Long = 60_000,
         onProgress: (String) -> Unit = {}
     ): CoachResult = withContext(Dispatchers.IO) {
         val parts = buildJsonArray { add(buildJsonObject { put("text", prompt) }) }
@@ -290,15 +290,20 @@ class GeminiClient(
                 message.contains("INVALID_ARGUMENT", ignoreCase = true)
     }
 
+    /** Códigos que indican sobrecarga/límite puntual: el mismo modelo suele responder bien
+     * segundos después, así que vale la pena reintentar antes de saltar a otro modelo. */
+    private fun isRetryableHttpCode(code: Int): Boolean = code == 429 || code == 503 || code == 500 || code == 502 || code == 504
+
     private fun fetchModelText(model: String, requestBody: String, deadline: Long): TextFetchResult {
         // Un corte de red o un fallo de DNS puntual (muy común en 4G/5G real, aunque el
         // promedio de la conexión sea bueno: el resolver del teléfono a veces falla en un
         // intento aislado) no debería tirar todo el intento: se reintenta antes de pasar al
         // siguiente modelo o reportar el error. UnknownHostException también se reintenta,
         // con una pequeña pausa para darle tiempo al resolver DNS del sistema a recuperarse.
-        // Se limita a 2 intentos (antes 3) para que el límite global de espera se respete con
-        // margen, en vez de que un solo modelo agote casi todo el presupuesto de tiempo.
-        val maxAttempts = 2
+        // 3 intentos: suficiente para dejar pasar una sobrecarga puntual (503/429) con una
+        // pequeña pausa entre reintentos, sin dejar que un solo modelo agote todo el presupuesto
+        // de tiempo (el límite global sigue cortando si hace falta).
+        val maxAttempts = 3
         repeat(maxAttempts) { attempt ->
             if (System.currentTimeMillis() >= deadline) return TextFetchResult.Error("Se agotó el tiempo de espera antes de completar el intento con $model")
             try {
@@ -309,13 +314,20 @@ class GeminiClient(
                     .post(requestBody.toRequestBody("application/json".toMediaType()))
                     .build()
 
-                client.newCall(request).execute().use { response ->
-                    val bodyString = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        return TextFetchResult.Error("Error de Gemini con $model (${response.code}): $bodyString")
-                    }
-                    return extractText(bodyString)
+                val (isSuccessful, code, bodyString) = client.newCall(request).execute().use { response ->
+                    Triple(response.isSuccessful, response.code, response.body?.string().orEmpty())
                 }
+                if (isSuccessful) return extractText(bodyString)
+
+                // 503/429 (sobrecarga, límite de tasa) son errores puntuales, no permanentes:
+                // antes se saltaba de inmediato al siguiente modelo sin siquiera darle a este un
+                // segundo respiro, lo que quemaba el presupuesto de tiempo probando modelos que
+                // en realidad iban a responder bien casi enseguida.
+                if (isRetryableHttpCode(code) && attempt < maxAttempts - 1 && System.currentTimeMillis() + 1500L < deadline) {
+                    Thread.sleep(1500L * (attempt + 1))
+                    return@repeat
+                }
+                return TextFetchResult.Error("Error de Gemini con $model ($code): $bodyString")
             } catch (e: java.net.UnknownHostException) {
                 if (attempt == maxAttempts - 1) {
                     // Se llega aquí incluso después de intentar resolver por DNS-over-HTTPS como

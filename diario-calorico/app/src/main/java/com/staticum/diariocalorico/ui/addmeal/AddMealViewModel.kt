@@ -171,12 +171,12 @@ class AddMealViewModel(
                     _analysisState.value = AnalysisState.Done(estimate)
                 }
                 is GeminiResult.Error -> {
-                    // Ante un error transitorio (red/timeout, no un problema de configuración
-                    // como la API key), no tiene sentido dejar a la persona esperando o forzarla
-                    // a reintentar manualmente: se guarda la comida como pendiente y un proceso
-                    // en segundo plano la reintenta solo, cada cierto tiempo, hasta lograrlo.
-                    if (f.editingMealId == null && !GeminiClient.isFatalError(result.message)) {
-                        autoSaveAsPending(f)
+                    // Ante un error transitorio (red/timeout/sobrecarga, no un problema de
+                    // configuración como la API key), no tiene sentido dejar a la persona
+                    // esperando o forzarla a reintentar manualmente: se guarda como pendiente y
+                    // un proceso en segundo plano la reintenta solo, cada cierto tiempo.
+                    if (!GeminiClient.isFatalError(result.message)) {
+                        if (f.editingMealId != null) markExistingAsPending(f) else autoSaveAsPending(f)
                     } else {
                         _analysisState.value = AnalysisState.Failed(result.message)
                     }
@@ -201,6 +201,31 @@ class AddMealViewModel(
         val extraFoodPhotos = f.foodPhotos.drop(1).map { it.absolutePath }
         val labelPhotos = f.labelPhotos.map { it.absolutePath }
         repository.saveMeal(entry, extraFoodPhotos, labelPhotos)
+        _analysisState.value = AnalysisState.AutoSavedPending
+    }
+
+    /**
+     * Al reintentar el análisis de una comida ya guardada y volver a fallar, se conservan los
+     * valores actuales (no se pisan con ceros) y solo se marca pendiente, para que el reintento
+     * en segundo plano la actualice sola sin arriesgar los datos ya válidos que tenía.
+     */
+    private suspend fun markExistingAsPending(f: AddMealFormState) {
+        val entry = MealEntry(
+            id = f.editingMealId!!,
+            consumedAt = f.consumedAt,
+            mealType = f.mealType,
+            description = f.userNote,
+            foodPhotoPath = f.foodPhotos.first().absolutePath,
+            calories = f.calories.toIntOrNull() ?: 0,
+            proteinGrams = f.proteinGrams.toDoubleOrNull() ?: 0.0,
+            carbsGrams = f.carbsGrams.toDoubleOrNull() ?: 0.0,
+            fatGrams = f.fatGrams.toDoubleOrNull() ?: 0.0,
+            detectedFoods = f.detectedFoods,
+            analysisPending = true
+        )
+        val extraFoodPhotos = f.foodPhotos.drop(1).map { it.absolutePath }
+        val labelPhotos = f.labelPhotos.map { it.absolutePath }
+        repository.updateMeal(entry, extraFoodPhotos, labelPhotos)
         _analysisState.value = AnalysisState.AutoSavedPending
     }
 

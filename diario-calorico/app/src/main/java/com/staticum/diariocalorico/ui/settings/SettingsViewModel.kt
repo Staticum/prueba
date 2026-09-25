@@ -5,10 +5,13 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.staticum.diariocalorico.data.DailyGoals
 import com.staticum.diariocalorico.data.GeminiLogRepository
 import com.staticum.diariocalorico.data.UserPreferences
 import com.staticum.diariocalorico.export.GeminiLogExporter
+import com.staticum.diariocalorico.work.GeminiRetryWorker
 import com.staticum.diariocalorico.update.ApkDownloader
 import com.staticum.diariocalorico.update.ReleaseInfo
 import com.staticum.diariocalorico.update.UpdateCheckResult
@@ -98,6 +101,17 @@ class SettingsViewModel(
 
     fun consumeLogExportUri() {
         _uiState.value = _uiState.value.copy(logExportUri = null)
+    }
+
+    /**
+     * Dispara el reintento de comidas pendientes ahora mismo, sin esperar al ciclo periódico
+     * (cada 2 horas). Útil si el reintento automático no se ejecutó — algunos fabricantes
+     * (Motorola incluido) restringen agresivamente el trabajo en segundo plano por batería.
+     */
+    fun retryPendingAnalysisNow() {
+        val request = OneTimeWorkRequestBuilder<GeminiRetryWorker>().build()
+        WorkManager.getInstance(appContext).enqueue(request)
+        _uiState.value = _uiState.value.copy(logExportMessage = "Reintentando análisis pendientes en segundo plano...")
     }
 
     fun downloadAndInstallUpdate() {
