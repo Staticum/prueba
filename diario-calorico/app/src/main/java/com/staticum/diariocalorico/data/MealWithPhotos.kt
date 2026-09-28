@@ -10,7 +10,10 @@ data class MealWithPhotos(
     @Relation(parentColumn = "id", entityColumn = "mealEntryId")
     val labelPhotos: List<LabelPhoto>
 ) {
-    /** Todas las fotos de alimento de esta comida, con la principal (histórica) primero. */
+    /**
+     * Todas las fotos de alimento de esta comida, con la principal (histórica) primero.
+     * Las comidas registradas desde un alimento guardado no tienen foto (foodPhotoPath vacío).
+     */
     val allFoodPhotoPaths: List<String>
-        get() = (listOf(meal.foodPhotoPath) + foodPhotos.map { it.photoPath }).distinct()
+        get() = (listOf(meal.foodPhotoPath) + foodPhotos.map { it.photoPath }).distinct().filter { it.isNotBlank() }
 }

@@ -5,6 +5,7 @@ import androidx.work.WorkManager
 import com.staticum.diariocalorico.data.AppDatabase
 import com.staticum.diariocalorico.data.GeminiLogRepository
 import com.staticum.diariocalorico.data.MealRepository
+import com.staticum.diariocalorico.data.SavedFoodRepository
 import com.staticum.diariocalorico.data.TrackingRepository
 import com.staticum.diariocalorico.data.UserPreferences
 
@@ -17,6 +18,9 @@ class DiarioCaloricoApplication : Application() {
     }
     val geminiLogRepository: GeminiLogRepository by lazy {
         GeminiLogRepository(AppDatabase.getInstance(this).geminiLogDao())
+    }
+    val savedFoodRepository: SavedFoodRepository by lazy {
+        SavedFoodRepository(AppDatabase.getInstance(this).savedFoodDao())
     }
     val userPreferences: UserPreferences by lazy { UserPreferences(this) }
 

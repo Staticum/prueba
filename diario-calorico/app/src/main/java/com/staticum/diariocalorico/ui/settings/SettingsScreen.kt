@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.staticum.diariocalorico.data.DailyGoals
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
+fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpenSavedFoods: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
@@ -104,6 +104,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     )
                 )
             }) { Text("Guardar metas") }
+
+            Text("Alimentos frecuentes")
+            OutlinedButton(onClick = onOpenSavedFoods) { Text("Gestionar alimentos guardados") }
+            Text(
+                "Crea alimentos con macros fijos (ej. tu batido de proteína) para registrarlos con un toque, sin foto ni Gemini.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Text("Diagnóstico")
             OutlinedButton(onClick = { viewModel.retryPendingAnalysisNow() }) { Text("Reintentar análisis pendientes ahora") }

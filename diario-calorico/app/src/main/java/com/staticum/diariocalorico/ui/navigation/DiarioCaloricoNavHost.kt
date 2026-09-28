@@ -22,6 +22,8 @@ import com.staticum.diariocalorico.ui.history.HistoryScreen
 import com.staticum.diariocalorico.ui.history.HistoryViewModel
 import com.staticum.diariocalorico.ui.reports.ReportsScreen
 import com.staticum.diariocalorico.ui.reports.ReportsViewModel
+import com.staticum.diariocalorico.ui.savedfoods.SavedFoodsScreen
+import com.staticum.diariocalorico.ui.savedfoods.SavedFoodsViewModel
 import com.staticum.diariocalorico.ui.settings.SettingsScreen
 import com.staticum.diariocalorico.ui.settings.SettingsViewModel
 import com.staticum.diariocalorico.util.LambdaViewModelFactory
@@ -56,7 +58,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
         }
         composable(Routes.ADD_MEAL) {
             val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
-                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository)
+                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository, app.savedFoodRepository)
             })
             AddMealScreen(
                 viewModel = vm,
@@ -70,7 +72,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
         ) { backStackEntry ->
             val mealId = backStackEntry.arguments?.getLong("mealId") ?: return@composable
             val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
-                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository)
+                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository, app.savedFoodRepository)
             })
             androidx.compose.runtime.LaunchedEffect(mealId) { vm.loadForEdit(mealId) }
             AddMealScreen(
@@ -111,7 +113,7 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
             val epochDay = backStackEntry.arguments?.getLong("epochDay") ?: return@composable
             val date = LocalDate.ofEpochDay(epochDay)
             val vm: AddMealViewModel = viewModel(factory = LambdaViewModelFactory {
-                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository)
+                AddMealViewModel(app.repository, app.userPreferences, app.geminiLogRepository, app.savedFoodRepository)
             })
             androidx.compose.runtime.LaunchedEffect(date) { vm.presetDate(date) }
             AddMealScreen(
@@ -130,7 +132,17 @@ fun DiarioCaloricoNavHost(navController: NavHostController = rememberNavControll
             val vm: SettingsViewModel = viewModel(factory = LambdaViewModelFactory {
                 SettingsViewModel(app.userPreferences, app, app.geminiLogRepository)
             })
-            SettingsScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            SettingsScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenSavedFoods = { navController.navigate(Routes.SAVED_FOODS) }
+            )
+        }
+        composable(Routes.SAVED_FOODS) {
+            val vm: SavedFoodsViewModel = viewModel(factory = LambdaViewModelFactory {
+                SavedFoodsViewModel(app.savedFoodRepository)
+            })
+            SavedFoodsScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
     }
 }

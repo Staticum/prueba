@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.staticum.diariocalorico.data.MealEntry
 import com.staticum.diariocalorico.data.MealType
+import com.staticum.diariocalorico.ui.savedfoods.SavedFoodEditDialog
 import com.staticum.diariocalorico.util.DateTimeFormatters
 import com.staticum.diariocalorico.util.PhotoFiles
 import java.io.File
@@ -81,6 +82,9 @@ fun AddMealScreen(
     val form by viewModel.form.collectAsState()
     val analysisState by viewModel.analysisState.collectAsState()
     val frequentMeals by viewModel.frequentMeals.collectAsState()
+    val savedFoods by viewModel.savedFoods.collectAsState()
+    val favoriteSavedMessage by viewModel.favoriteSavedMessage.collectAsState()
+    var showSaveFavoriteDialog by remember { mutableStateOf(false) }
 
     var pendingCameraTarget by remember { mutableStateOf<File?>(null) }
     var pendingCameraIsLabel by remember { mutableStateOf(false) }
@@ -147,6 +151,18 @@ fun AddMealScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (savedFoods.isNotEmpty() && form.editingMealId == null) {
+                SectionLabel("Alimentos guardados")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(savedFoods) { food ->
+                        AssistChip(
+                            onClick = { viewModel.applySavedFood(food) },
+                            label = { Text("${food.name} · ${food.calories} kcal") }
+                        )
+                    }
+                }
+            }
+
             if (frequentMeals.isNotEmpty() && form.editingMealId == null) {
                 SectionLabel("Comidas frecuentes")
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -159,7 +175,15 @@ fun AddMealScreen(
                 }
             }
 
-            SectionLabel("Foto(s) del alimento *")
+            if (form.fromSavedFood) {
+                Text(
+                    "Cargado desde un alimento guardado: no necesitas foto, solo confirma con \"Guardar\".",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            SectionLabel(if (form.fromSavedFood) "Foto(s) del alimento (opcional)" else "Foto(s) del alimento *")
             PhotoGrid(
                 photos = form.foodPhotos,
                 onRemove = viewModel::removeFoodPhoto
@@ -237,6 +261,10 @@ fun AddMealScreen(
                     OutlinedTextField(value = form.carbsGrams, onValueChange = { viewModel.updateEditableFields(carbs = it) }, label = { Text("Carbohidratos (g)") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = form.fatGrams, onValueChange = { viewModel.updateEditableFields(fat = it) }, label = { Text("Grasa (g)") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = form.detectedFoods, onValueChange = { viewModel.updateEditableFields(foods = it) }, label = { Text("Alimentos detectados") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedButton(onClick = { showSaveFavoriteDialog = true }) { Text("Guardar como alimento favorito") }
+                    favoriteSavedMessage?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
 
@@ -259,6 +287,21 @@ fun AddMealScreen(
                 val copy = PhotoFiles.copyFromFile(context, file)
                 if (isLabel) viewModel.addLabelPhoto(copy) else viewModel.addFoodPhoto(copy)
                 previousPhotosTargetIsLabel = null
+            }
+        )
+    }
+
+    if (showSaveFavoriteDialog) {
+        SavedFoodEditDialog(
+            initialName = form.userNote.ifBlank { form.detectedFoods },
+            initialCalories = form.calories,
+            initialProtein = form.proteinGrams,
+            initialCarbs = form.carbsGrams,
+            initialFat = form.fatGrams,
+            onDismiss = { showSaveFavoriteDialog = false },
+            onConfirm = { name, _, _, _, _ ->
+                viewModel.saveCurrentAsFavorite(name)
+                showSaveFavoriteDialog = false
             }
         )
     }

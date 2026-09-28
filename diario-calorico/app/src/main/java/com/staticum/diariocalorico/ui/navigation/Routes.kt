@@ -12,6 +12,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val COACH = "coach"
     const val DAY_DETAIL = "day_detail/{epochDay}"
+    const val SAVED_FOODS = "saved_foods"
 
     fun editMeal(mealId: Long) = "edit_meal/$mealId"
     fun addMealForDate(date: LocalDate) = "add_meal_for_date/${date.toEpochDay()}"

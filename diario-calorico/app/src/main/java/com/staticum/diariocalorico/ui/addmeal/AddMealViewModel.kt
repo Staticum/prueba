@@ -7,12 +7,15 @@ import com.staticum.diariocalorico.data.GeminiLogRepository
 import com.staticum.diariocalorico.data.MealEntry
 import com.staticum.diariocalorico.data.MealRepository
 import com.staticum.diariocalorico.data.MealType
+import com.staticum.diariocalorico.data.SavedFood
+import com.staticum.diariocalorico.data.SavedFoodRepository
 import com.staticum.diariocalorico.data.UserPreferences
 import com.staticum.diariocalorico.network.GeminiClient
 import com.staticum.diariocalorico.network.GeminiResult
 import com.staticum.diariocalorico.network.NutritionEstimate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
@@ -37,13 +40,16 @@ data class AddMealFormState(
     val proteinGrams: String = "",
     val carbsGrams: String = "",
     val fatGrams: String = "",
-    val detectedFoods: String = ""
+    val detectedFoods: String = "",
+    /** true si los macros actuales vinieron de un alimento guardado (sin foto asociada). */
+    val fromSavedFood: Boolean = false
 )
 
 class AddMealViewModel(
     private val repository: MealRepository,
     private val userPreferences: UserPreferences,
-    private val geminiLogRepository: GeminiLogRepository
+    private val geminiLogRepository: GeminiLogRepository,
+    private val savedFoodRepository: SavedFoodRepository
 ) : ViewModel() {
 
     private val _form = MutableStateFlow(AddMealFormState())
@@ -55,9 +61,18 @@ class AddMealViewModel(
     private val _frequentMeals = MutableStateFlow<List<MealEntry>>(emptyList())
     val frequentMeals: StateFlow<List<MealEntry>> = _frequentMeals
 
+    private val _savedFoods = MutableStateFlow<List<SavedFood>>(emptyList())
+    val savedFoods: StateFlow<List<SavedFood>> = _savedFoods
+
+    private val _favoriteSavedMessage = MutableStateFlow<String?>(null)
+    val favoriteSavedMessage: StateFlow<String?> = _favoriteSavedMessage
+
     init {
         viewModelScope.launch {
             _frequentMeals.value = repository.getFrequentMeals()
+        }
+        viewModelScope.launch {
+            savedFoodRepository.observeAll().collect { _savedFoods.value = it }
         }
     }
 
@@ -81,7 +96,7 @@ class AddMealViewModel(
     }
 
     fun addFoodPhoto(file: File) {
-        _form.value = _form.value.copy(foodPhotos = _form.value.foodPhotos + file)
+        _form.value = _form.value.copy(foodPhotos = _form.value.foodPhotos + file, fromSavedFood = false)
     }
 
     fun removeFoodPhoto(file: File) {
@@ -119,6 +134,48 @@ class AddMealViewModel(
             fatGrams = meal.fatGrams.toString(),
             detectedFoods = meal.detectedFoods
         )
+    }
+
+    /**
+     * Precarga el formulario con un alimento guardado (sin foto, sin llamar a Gemini). La hora
+     * se actualiza a "ahora" ya que normalmente se usa para registrar algo que se acaba de
+     * consumir (ej. un batido); la persona igual confirma con "Guardar" antes de que quede
+     * registrado.
+     */
+    fun applySavedFood(food: SavedFood) {
+        _form.value = _form.value.copy(
+            consumedAt = Instant.now(),
+            userNote = food.name,
+            calories = food.calories.toString(),
+            proteinGrams = food.proteinGrams.toString(),
+            carbsGrams = food.carbsGrams.toString(),
+            fatGrams = food.fatGrams.toString(),
+            detectedFoods = food.detectedFoods,
+            fromSavedFood = true
+        )
+    }
+
+    /** Guarda los macros actuales del formulario como un nuevo alimento guardado, con el nombre dado. */
+    fun saveCurrentAsFavorite(name: String) {
+        if (name.isBlank()) return
+        val f = _form.value
+        viewModelScope.launch {
+            savedFoodRepository.save(
+                SavedFood(
+                    name = name,
+                    calories = f.calories.toIntOrNull() ?: 0,
+                    proteinGrams = f.proteinGrams.toDoubleOrNull() ?: 0.0,
+                    carbsGrams = f.carbsGrams.toDoubleOrNull() ?: 0.0,
+                    fatGrams = f.fatGrams.toDoubleOrNull() ?: 0.0,
+                    detectedFoods = f.detectedFoods.ifBlank { name }
+                )
+            )
+            _favoriteSavedMessage.value = "\"$name\" guardado en tus alimentos favoritos"
+        }
+    }
+
+    fun consumeFavoriteSavedMessage() {
+        _favoriteSavedMessage.value = null
     }
 
     fun updateEditableFields(
@@ -231,7 +288,7 @@ class AddMealViewModel(
 
     fun saveMeal(context: Context, onSaved: () -> Unit, onError: (String) -> Unit) {
         val f = _form.value
-        if (f.foodPhotos.isEmpty()) { onError("Falta al menos una foto del alimento"); return }
+        if (f.foodPhotos.isEmpty() && !f.fromSavedFood) { onError("Falta al menos una foto del alimento"); return }
         // Si Gemini no estuvo disponible y el usuario no completó las calorías a mano,
         // se guarda igual con 0 en vez de bloquear el registro: se puede corregir después.
         val calories = f.calories.toIntOrNull() ?: 0
@@ -242,7 +299,7 @@ class AddMealViewModel(
                 consumedAt = f.consumedAt,
                 mealType = f.mealType,
                 description = f.userNote,
-                foodPhotoPath = f.foodPhotos.first().absolutePath,
+                foodPhotoPath = f.foodPhotos.firstOrNull()?.absolutePath.orEmpty(),
                 calories = calories,
                 proteinGrams = f.proteinGrams.toDoubleOrNull() ?: 0.0,
                 carbsGrams = f.carbsGrams.toDoubleOrNull() ?: 0.0,

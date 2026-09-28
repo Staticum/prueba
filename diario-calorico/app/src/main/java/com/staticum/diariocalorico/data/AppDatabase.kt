@@ -11,9 +11,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         MealEntry::class, LabelPhoto::class, FoodPhoto::class,
-        DailyExpenditure::class, WeightEntry::class, GeminiLogEntry::class
+        DailyExpenditure::class, WeightEntry::class, GeminiLogEntry::class, SavedFood::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -21,6 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun mealDao(): MealDao
     abstract fun trackingDao(): TrackingDao
     abstract fun geminiLogDao(): GeminiLogDao
+    abstract fun savedFoodDao(): SavedFoodDao
 
     companion object {
         @Volatile
@@ -62,6 +63,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Agrega la tabla de alimentos guardados (favoritos con macros fijos, sin foto). */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `saved_foods` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`calories` INTEGER NOT NULL, `proteinGrams` REAL NOT NULL, " +
+                        "`carbsGrams` REAL NOT NULL, `fatGrams` REAL NOT NULL, `detectedFoods` TEXT NOT NULL)"
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -69,7 +82,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "diario_calorico.db"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build().also { instance = it }
             }
     }
