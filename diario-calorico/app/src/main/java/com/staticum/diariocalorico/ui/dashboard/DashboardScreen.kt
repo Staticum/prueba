@@ -17,10 +17,12 @@ import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TipsAndUpdates
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,7 +45,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -96,6 +97,9 @@ fun DashboardScreen(
     ) { padding ->
         LazyColumn(modifier = Modifier.padding(padding).fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { ProgressCard(state) }
+            if (state.insights.isNotEmpty()) {
+                items(state.insights) { insight -> InsightCard(insight) }
+            }
             item {
                 TrackingCard(
                     latestWeightKg = state.latestWeightKg,
@@ -112,11 +116,33 @@ fun DashboardScreen(
 }
 
 @Composable
+private fun InsightCard(insight: DashboardInsight) {
+    val containerColor = when (insight.severity) {
+        InsightSeverity.WARNING -> MaterialTheme.colorScheme.errorContainer
+        InsightSeverity.INFO -> MaterialTheme.colorScheme.tertiaryContainer
+    }
+    val onContainerColor = when (insight.severity) {
+        InsightSeverity.WARNING -> MaterialTheme.colorScheme.onErrorContainer
+        InsightSeverity.INFO -> MaterialTheme.colorScheme.onTertiaryContainer
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = containerColor), modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
+            Icon(
+                if (insight.severity == InsightSeverity.WARNING) Icons.Filled.WarningAmber else Icons.Filled.Lightbulb,
+                contentDescription = null,
+                tint = onContainerColor
+            )
+            Text(insight.message, style = MaterialTheme.typography.bodyMedium, color = onContainerColor, modifier = Modifier.padding(start = 12.dp))
+        }
+    }
+}
+
+@Composable
 private fun ProgressCard(state: DashboardUiState) {
     val ratio = (state.consumedCalories.toFloat() / state.goals.calories).coerceAtLeast(0f)
     val progressColor = when {
         ratio > 1.05f -> MaterialTheme.colorScheme.error
-        ratio > 0.9f -> Color(0xFFFFA000)
+        ratio > 0.9f -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.primary
     }
 

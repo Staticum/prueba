@@ -19,13 +19,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.staticum.diariocalorico.ui.theme.ChartExpenditure
+import com.staticum.diariocalorico.ui.theme.ChartGridLabel
+import com.staticum.diariocalorico.ui.theme.ChartWeight
+import com.staticum.diariocalorico.ui.theme.GreenPrimary
+import com.staticum.diariocalorico.ui.theme.toAndroidArgb
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val dayLabelFormatter = DateTimeFormatter.ofPattern("EEE d", Locale("es", "ES"))
-private val consumedColor = Color(0xFF2E7D32)
-private val expenditureColor = Color(0xFFFFA000)
-private val weightColor = Color(0xFF1565C0)
+private val consumedColor = GreenPrimary
+private val expenditureColor = ChartExpenditure
+private val weightColor = ChartWeight
 
 @Composable
 fun DeficitChart(
@@ -72,7 +77,7 @@ fun DeficitChart(
             }
 
             val labelPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.GRAY
+                color = ChartGridLabel.toAndroidArgb()
                 textSize = 9.sp.toPx()
                 textAlign = android.graphics.Paint.Align.CENTER
             }

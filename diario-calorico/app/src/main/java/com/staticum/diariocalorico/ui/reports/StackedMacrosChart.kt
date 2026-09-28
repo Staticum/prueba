@@ -19,13 +19,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.staticum.diariocalorico.ui.theme.ChartCarbs
+import com.staticum.diariocalorico.ui.theme.ChartFat
+import com.staticum.diariocalorico.ui.theme.ChartGridLabel
+import com.staticum.diariocalorico.ui.theme.ChartProtein
+import com.staticum.diariocalorico.ui.theme.toAndroidArgb
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val dayLabelFormatter = DateTimeFormatter.ofPattern("EEE d", Locale("es", "ES"))
-private val proteinColor = Color(0xFF2E7D32)
-private val carbsColor = Color(0xFFFFA000)
-private val fatColor = Color(0xFFD32F2F)
+private val proteinColor = ChartProtein
+private val carbsColor = ChartCarbs
+private val fatColor = ChartFat
 
 @Composable
 fun StackedMacrosChart(points: List<DayMacros>, modifier: Modifier = Modifier) {
@@ -49,7 +54,7 @@ fun StackedMacrosChart(points: List<DayMacros>, modifier: Modifier = Modifier) {
             }
 
             val labelPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.GRAY
+                color = ChartGridLabel.toAndroidArgb()
                 textSize = 9.sp.toPx()
                 textAlign = android.graphics.Paint.Align.CENTER
             }
