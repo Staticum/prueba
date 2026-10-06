@@ -237,7 +237,6 @@ fun AddMealScreen(
                     Text(state.progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 is AnalysisState.Failed -> Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
-                is AnalysisState.Done -> NutritionalInsightCard(state.estimate)
                 is AnalysisState.AutoSavedPending -> Text(
                     "Gemini no respondió a tiempo. La comida se guardó igual, marcada como pendiente; reinténtalo cuando quieras desde Ajustes > \"Reintentar análisis pendientes ahora\".",
                     style = MaterialTheme.typography.bodyMedium,
@@ -251,6 +250,16 @@ fun AddMealScreen(
                     kotlinx.coroutines.delay(1800)
                     onSaved()
                 }
+            }
+
+            if (form.confidenceNote.isNotBlank() || form.benefits.isNotBlank() || form.drawbacks.isNotBlank() || form.frequencyAdvice.isNotBlank()) {
+                NutritionalInsightCard(
+                    confidenceNote = form.confidenceNote,
+                    benefits = form.benefits,
+                    drawbacks = form.drawbacks,
+                    frequencyAdvice = form.frequencyAdvice,
+                    geminiModel = form.geminiModel
+                )
             }
 
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -346,21 +355,34 @@ private fun PreviousPhotosDialog(onDismiss: () -> Unit, onSelected: (File) -> Un
 }
 
 @Composable
-private fun NutritionalInsightCard(estimate: com.staticum.diariocalorico.network.NutritionEstimate) {
+private fun NutritionalInsightCard(
+    confidenceNote: String,
+    benefits: String,
+    drawbacks: String,
+    frequencyAdvice: String,
+    geminiModel: String?
+) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Aprende sobre lo que comiste", style = MaterialTheme.typography.titleSmall)
-            if (estimate.confidenceNote.isNotBlank()) {
-                Text("Nota de confianza: ${estimate.confidenceNote}", style = MaterialTheme.typography.bodySmall)
+            if (confidenceNote.isNotBlank()) {
+                Text("Nota de confianza: $confidenceNote", style = MaterialTheme.typography.bodySmall)
             }
-            if (estimate.benefits.isNotBlank()) {
-                InsightRow("Beneficios", estimate.benefits)
+            if (benefits.isNotBlank()) {
+                InsightRow("Beneficios", benefits)
             }
-            if (estimate.drawbacks.isNotBlank()) {
-                InsightRow("A tener en cuenta", estimate.drawbacks)
+            if (drawbacks.isNotBlank()) {
+                InsightRow("A tener en cuenta", drawbacks)
             }
-            if (estimate.frequencyAdvice.isNotBlank()) {
-                InsightRow("¿Consumo frecuente?", estimate.frequencyAdvice)
+            if (frequencyAdvice.isNotBlank()) {
+                InsightRow("¿Consumo frecuente?", frequencyAdvice)
+            }
+            if (!geminiModel.isNullOrBlank()) {
+                Text(
+                    "Modelo: $geminiModel",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                )
             }
         }
     }

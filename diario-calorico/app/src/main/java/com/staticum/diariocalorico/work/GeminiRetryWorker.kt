@@ -62,7 +62,12 @@ class GeminiRetryWorker(context: Context, params: WorkerParameters) : CoroutineW
                         carbsGrams = estimate.carbsGrams,
                         fatGrams = estimate.fatGrams,
                         detectedFoods = estimate.detectedFoods.joinToString(", "),
-                        analysisPending = false
+                        analysisPending = false,
+                        confidenceNote = estimate.confidenceNote,
+                        benefits = estimate.benefits,
+                        drawbacks = estimate.drawbacks,
+                        frequencyAdvice = estimate.frequencyAdvice,
+                        geminiModel = result.model
                     ),
                     emptyList(),
                     emptyList()

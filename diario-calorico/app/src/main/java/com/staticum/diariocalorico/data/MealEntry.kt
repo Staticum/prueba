@@ -17,5 +17,12 @@ data class MealEntry(
     val fatGrams: Double,
     val detectedFoods: String,
     val createdAt: Instant = Instant.now(),
-    val analysisPending: Boolean = false
+    val analysisPending: Boolean = false,
+    val confidenceNote: String = "",
+    val benefits: String = "",
+    val drawbacks: String = "",
+    val frequencyAdvice: String = "",
+    /** Modelo de Gemini que entregó esta estimación (ej. "gemini-flash-latest"), para poder
+     * priorizar más adelante el que tenga mejor tasa de respuesta. Null si se ingresó a mano. */
+    val geminiModel: String? = null
 )

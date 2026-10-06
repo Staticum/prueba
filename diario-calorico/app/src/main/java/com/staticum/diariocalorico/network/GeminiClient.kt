@@ -26,7 +26,7 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 private sealed class TextFetchResult {
-    data class Success(val text: String) : TextFetchResult()
+    data class Success(val text: String, val model: String) : TextFetchResult()
     data class Error(val message: String) : TextFetchResult()
 }
 
@@ -135,7 +135,7 @@ class GeminiClient(
         val requestBody = buildRequestBody(parts, jsonResponse = true)
 
         when (val result = fetchTextWithFallback(requestBody, context, overallTimeoutMs, onProgress)) {
-            is TextFetchResult.Success -> parseEstimate(result.text)
+            is TextFetchResult.Success -> parseEstimate(result.text, result.model)
             is TextFetchResult.Error -> GeminiResult.Error(result.message)
         }
     }
@@ -329,7 +329,12 @@ class GeminiClient(
                 val (isSuccessful, code, bodyString) = client.newCall(request).execute().use { response ->
                     Triple(response.isSuccessful, response.code, response.body?.string().orEmpty())
                 }
-                if (isSuccessful) return extractText(bodyString)
+                if (isSuccessful) {
+                    return when (val extracted = extractText(bodyString)) {
+                        is TextFetchResult.Success -> TextFetchResult.Success(extracted.text, model)
+                        is TextFetchResult.Error -> extracted
+                    }
+                }
 
                 // 503/429 (sobrecarga, límite de tasa) son errores puntuales, no permanentes:
                 // antes se saltaba de inmediato al siguiente modelo sin siquiera darle a este un
@@ -376,7 +381,7 @@ class GeminiClient(
             val text = (parts?.firstOrNull() as? JsonObject)?.get("text")
                 ?.let { it as? JsonPrimitive }?.content
                 ?: return TextFetchResult.Error("Sin texto en la respuesta: $body")
-            TextFetchResult.Success(text)
+            TextFetchResult.Success(text, model = "")
         } catch (e: Exception) {
             TextFetchResult.Error("No se pudo interpretar la respuesta de Gemini: ${e.message}")
         }
@@ -466,11 +471,11 @@ class GeminiClient(
         """.trimIndent()
     }
 
-    private fun parseEstimate(text: String): GeminiResult {
+    private fun parseEstimate(text: String, model: String): GeminiResult {
         return try {
             val cleaned = text.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
             val estimate = json.decodeFromString(NutritionEstimate.serializer(), cleaned)
-            GeminiResult.Success(estimate)
+            GeminiResult.Success(estimate, model)
         } catch (e: Exception) {
             GeminiResult.Error("No se pudo interpretar la respuesta de Gemini: ${e.message}")
         }

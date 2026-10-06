@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MealEntry::class, LabelPhoto::class, FoodPhoto::class,
         DailyExpenditure::class, WeightEntry::class, GeminiLogEntry::class, SavedFood::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -75,6 +75,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Agrega las notas descriptivas de Gemini (beneficios, aspectos a moderar, recomendación
+         * de frecuencia, nota de confianza) y el modelo que entregó cada estimación. Antes estos
+         * datos solo vivían en el estado de la pantalla y se perdían al reabrir la comida (nunca
+         * se guardaban en la base); ahora quedan junto al resto del registro.
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE meal_entries ADD COLUMN confidenceNote TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE meal_entries ADD COLUMN benefits TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE meal_entries ADD COLUMN drawbacks TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE meal_entries ADD COLUMN frequencyAdvice TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE meal_entries ADD COLUMN geminiModel TEXT")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -82,7 +98,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "diario_calorico.db"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build().also { instance = it }
             }
     }

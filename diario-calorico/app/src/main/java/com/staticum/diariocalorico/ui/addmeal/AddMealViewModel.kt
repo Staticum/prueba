@@ -42,7 +42,12 @@ data class AddMealFormState(
     val fatGrams: String = "",
     val detectedFoods: String = "",
     /** true si los macros actuales vinieron de un alimento guardado (sin foto asociada). */
-    val fromSavedFood: Boolean = false
+    val fromSavedFood: Boolean = false,
+    val confidenceNote: String = "",
+    val benefits: String = "",
+    val drawbacks: String = "",
+    val frequencyAdvice: String = "",
+    val geminiModel: String? = null
 )
 
 class AddMealViewModel(
@@ -90,7 +95,12 @@ class AddMealViewModel(
                 proteinGrams = existing.meal.proteinGrams.toString(),
                 carbsGrams = existing.meal.carbsGrams.toString(),
                 fatGrams = existing.meal.fatGrams.toString(),
-                detectedFoods = existing.meal.detectedFoods
+                detectedFoods = existing.meal.detectedFoods,
+                confidenceNote = existing.meal.confidenceNote,
+                benefits = existing.meal.benefits,
+                drawbacks = existing.meal.drawbacks,
+                frequencyAdvice = existing.meal.frequencyAdvice,
+                geminiModel = existing.meal.geminiModel
             )
         }
     }
@@ -218,12 +228,17 @@ class AddMealViewModel(
             when (result) {
                 is GeminiResult.Success -> {
                     val estimate = result.estimate
-                    updateEditableFields(
+                    _form.value = _form.value.copy(
                         calories = estimate.calories.toString(),
-                        protein = estimate.proteinGrams.toString(),
-                        carbs = estimate.carbsGrams.toString(),
-                        fat = estimate.fatGrams.toString(),
-                        foods = estimate.detectedFoods.joinToString(", ")
+                        proteinGrams = estimate.proteinGrams.toString(),
+                        carbsGrams = estimate.carbsGrams.toString(),
+                        fatGrams = estimate.fatGrams.toString(),
+                        detectedFoods = estimate.detectedFoods.joinToString(", "),
+                        confidenceNote = estimate.confidenceNote,
+                        benefits = estimate.benefits,
+                        drawbacks = estimate.drawbacks,
+                        frequencyAdvice = estimate.frequencyAdvice,
+                        geminiModel = result.model
                     )
                     _analysisState.value = AnalysisState.Done(estimate)
                 }
@@ -278,7 +293,12 @@ class AddMealViewModel(
             carbsGrams = f.carbsGrams.toDoubleOrNull() ?: 0.0,
             fatGrams = f.fatGrams.toDoubleOrNull() ?: 0.0,
             detectedFoods = f.detectedFoods,
-            analysisPending = true
+            analysisPending = true,
+            confidenceNote = f.confidenceNote,
+            benefits = f.benefits,
+            drawbacks = f.drawbacks,
+            frequencyAdvice = f.frequencyAdvice,
+            geminiModel = f.geminiModel
         )
         val extraFoodPhotos = f.foodPhotos.drop(1).map { it.absolutePath }
         val labelPhotos = f.labelPhotos.map { it.absolutePath }
@@ -304,7 +324,12 @@ class AddMealViewModel(
                 proteinGrams = f.proteinGrams.toDoubleOrNull() ?: 0.0,
                 carbsGrams = f.carbsGrams.toDoubleOrNull() ?: 0.0,
                 fatGrams = f.fatGrams.toDoubleOrNull() ?: 0.0,
-                detectedFoods = f.detectedFoods
+                detectedFoods = f.detectedFoods,
+                confidenceNote = f.confidenceNote,
+                benefits = f.benefits,
+                drawbacks = f.drawbacks,
+                frequencyAdvice = f.frequencyAdvice,
+                geminiModel = f.geminiModel
             )
             val extraFoodPhotos = f.foodPhotos.drop(1).map { it.absolutePath }
             val labelPhotos = f.labelPhotos.map { it.absolutePath }
