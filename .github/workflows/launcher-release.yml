@@ -27,6 +27,14 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default package list includes the legacy "tools"
+          # meta-package, which Google removed from the SDK repository -
+          # every build has been failing here since, with nothing on our
+          # side to fix. Gradle/AGP only ever needed platform-tools from
+          # this step; build-tools and platforms get pulled in automatically
+          # by the Gradle build itself.
+          packages: 'platform-tools'
 
       - name: Grant execute permission to gradlew
         run: chmod +x gradlew
