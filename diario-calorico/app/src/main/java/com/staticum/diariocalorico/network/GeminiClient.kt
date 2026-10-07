@@ -3,9 +3,18 @@ package com.staticum.diariocalorico.network
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.time.Instant
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -14,13 +23,17 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.net.InetAddress
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
@@ -174,6 +187,11 @@ class GeminiClient(
             })
         }.toString()
 
+    /** Cuántos modelos se prueban a la vez. Más rápido ante red inestable (no se espera a que
+     * uno termine su propio timeout para recién probar el siguiente), a cambio de más
+     * solicitudes usadas por cada análisis. */
+    private val parallelBatchSize = 2
+
     private suspend fun fetchTextWithFallback(
         requestBody: String,
         context: String,
@@ -182,39 +200,41 @@ class GeminiClient(
     ): TextFetchResult {
         var lastError: TextFetchResult.Error? = null
         val triedModels = mutableSetOf<String>()
-        // Límite global de espera: antes de esto, cada modelo agotaba sus propios reintentos
-        // sin ningún tope conjunto, así que una racha de fallos podía dejar a la app "pensando"
-        // varios minutos sin mostrar nada. Ahora, pasado este plazo, se corta y se reporta el
-        // último error conocido en vez de seguir probando modelos en silencio.
+        // Límite global de espera, con cancelación real: antes esto solo se revisaba ANTES de
+        // cada intento, pero una llamada ya en curso corría hasta su propio timeout (hasta 90s
+        // con los reintentos de antes), dejando la app "pensando" sin nada que mostrar. Ahora
+        // cada lote de modelos se corta de verdad al llegar al plazo restante.
         val deadline = System.currentTimeMillis() + overallTimeoutMs
 
-        for (model in modelFallbackOrder) {
-            if (System.currentTimeMillis() >= deadline) break
-            triedModels += model
-            onProgress("Probando $model...")
-            val result = fetchModelText(model, requestBody, deadline)
+        for (batch in modelFallbackOrder.chunked(parallelBatchSize)) {
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0) break
+            triedModels += batch
+            onProgress("Probando ${batch.joinToString(", ")}...")
+            val result = raceModels(batch, requestBody, context, remaining)
             if (result is TextFetchResult.Success) return result
             lastError = result as TextFetchResult.Error
-            onLog(GeminiAttemptLog(Instant.now(), context, model, result.message))
             // Solo se aborta de inmediato ante errores que ningún otro modelo va a resolver
             // (clave inválida, permisos, request malformado). Todo lo demás (modelo caído,
-            // sobrecargado o removido) sigue probando el siguiente de la lista.
+            // sobrecargado o removido) sigue probando el siguiente lote.
             if (isFatalError(result.message)) return result
         }
 
         // Si todos los modelos conocidos fallaron (ej. Google renombró/removió modelos otra vez),
         // se consulta el catálogo real de modelos disponibles y se prueba con el resto, siempre
         // que todavía quede tiempo dentro del límite global.
-        if (System.currentTimeMillis() < deadline) {
+        val remainingForDiscovery = deadline - System.currentTimeMillis()
+        if (remainingForDiscovery > 0) {
             onProgress("Buscando modelos disponibles...")
-            for (model in discoverFallbackModels(triedModels)) {
-                if (System.currentTimeMillis() >= deadline) break
-                triedModels += model
-                onProgress("Probando $model...")
-                val result = fetchModelText(model, requestBody, deadline)
-                if (result is TextFetchResult.Success) return result
-                lastError = result as TextFetchResult.Error
-                onLog(GeminiAttemptLog(Instant.now(), context, model, result.message))
+            val discovered = discoverFallbackModels(triedModels)
+            if (discovered.isNotEmpty()) {
+                val remaining = deadline - System.currentTimeMillis()
+                if (remaining > 0) {
+                    onProgress("Probando ${discovered.joinToString(", ")}...")
+                    val result = raceModels(discovered, requestBody, context, remaining)
+                    if (result is TextFetchResult.Success) return result
+                    lastError = result as TextFetchResult.Error
+                }
             }
         }
 
@@ -225,6 +245,42 @@ class GeminiClient(
             ?: TextFetchResult.Error("No se pudo contactar a ningún modelo de Gemini$timeoutNote").also {
                 onLog(GeminiAttemptLog(Instant.now(), context, null, it.message))
             }
+    }
+
+    /**
+     * Lanza varios modelos al mismo tiempo y se queda con el primero que responda bien,
+     * cancelando el resto. Si todos fallan, devuelve el último error (y registra cada uno en
+     * el log de diagnóstico).
+     */
+    private suspend fun raceModels(
+        models: List<String>,
+        requestBody: String,
+        context: String,
+        timeoutMs: Long
+    ): TextFetchResult = coroutineScope {
+        val results = Channel<TextFetchResult>(Channel.UNLIMITED)
+        val jobs = models.map { model ->
+            launch {
+                val result = fetchModelTextSuspend(model, requestBody, timeoutMs)
+                if (result is TextFetchResult.Error) {
+                    onLog(GeminiAttemptLog(Instant.now(), context, model, result.message))
+                }
+                results.send(result)
+            }
+        }
+
+        var success: TextFetchResult.Success? = null
+        var lastError: TextFetchResult.Error? = null
+        repeat(models.size) {
+            if (success != null) return@repeat
+            when (val result = results.receive()) {
+                is TextFetchResult.Success -> success = result
+                is TextFetchResult.Error -> lastError = result
+            }
+        }
+        jobs.forEach { it.cancel() }
+
+        success ?: lastError ?: TextFetchResult.Error("Todos los modelos de este lote fallaron")
     }
 
     /**
@@ -302,71 +358,62 @@ class GeminiClient(
                 message.contains("INVALID_ARGUMENT", ignoreCase = true)
     }
 
-    /** Códigos que indican sobrecarga/límite puntual: el mismo modelo suele responder bien
-     * segundos después, así que vale la pena reintentar antes de saltar a otro modelo. */
-    private fun isRetryableHttpCode(code: Int): Boolean = code == 429 || code == 503 || code == 500 || code == 502 || code == 504
+    /** Envuelve una llamada OkHttp como suspend real: si la coroutine se cancela (por
+     * withTimeout o por perder la carrera contra otro modelo), la llamada HTTP se cancela de
+     * verdad en el acto, en vez de seguir corriendo en segundo plano hasta su propio timeout. */
+    private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (!cont.isCancelled) cont.resumeWithException(e)
+            }
 
-    private fun fetchModelText(model: String, requestBody: String, deadline: Long): TextFetchResult {
-        // Un corte de red o un fallo de DNS puntual (muy común en 4G/5G real, aunque el
-        // promedio de la conexión sea bueno: el resolver del teléfono a veces falla en un
-        // intento aislado) no debería tirar todo el intento: se reintenta antes de pasar al
-        // siguiente modelo o reportar el error. UnknownHostException también se reintenta,
-        // con una pequeña pausa para darle tiempo al resolver DNS del sistema a recuperarse.
-        // 3 intentos: suficiente para dejar pasar una sobrecarga puntual (503/429) con una
-        // pequeña pausa entre reintentos, sin dejar que un solo modelo agote todo el presupuesto
-        // de tiempo (el límite global sigue cortando si hace falta).
-        val maxAttempts = 3
-        repeat(maxAttempts) { attempt ->
-            if (System.currentTimeMillis() >= deadline) return TextFetchResult.Error("Se agotó el tiempo de espera antes de completar el intento con $model")
-            try {
-                val request = Request.Builder()
-                    .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
-                    .addHeader("x-goog-api-key", apiKey)
-                    .addHeader("Content-Type", "application/json")
-                    .post(requestBody.toRequestBody("application/json".toMediaType()))
-                    .build()
+            override fun onResponse(call: Call, response: Response) {
+                cont.resume(response)
+            }
+        })
+        cont.invokeOnCancellation { runCatching { cancel() } }
+    }
 
-                val (isSuccessful, code, bodyString) = client.newCall(request).execute().use { response ->
-                    Triple(response.isSuccessful, response.code, response.body?.string().orEmpty())
-                }
-                if (isSuccessful) {
-                    return when (val extracted = extractText(bodyString)) {
+    private suspend fun fetchModelTextSuspend(model: String, requestBody: String, timeoutMs: Long): TextFetchResult {
+        return try {
+            val request = Request.Builder()
+                .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+                .addHeader("x-goog-api-key", apiKey)
+                .addHeader("Content-Type", "application/json")
+                .post(requestBody.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            withTimeout(timeoutMs) {
+                client.newCall(request).await().use { response ->
+                    val bodyString = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        return@use TextFetchResult.Error("Error de Gemini con $model (${response.code}): $bodyString")
+                    }
+                    when (val extracted = extractText(bodyString)) {
                         is TextFetchResult.Success -> TextFetchResult.Success(extracted.text, model)
                         is TextFetchResult.Error -> extracted
                     }
                 }
-
-                // 503/429 (sobrecarga, límite de tasa) son errores puntuales, no permanentes:
-                // antes se saltaba de inmediato al siguiente modelo sin siquiera darle a este un
-                // segundo respiro, lo que quemaba el presupuesto de tiempo probando modelos que
-                // en realidad iban a responder bien casi enseguida.
-                if (isRetryableHttpCode(code) && attempt < maxAttempts - 1 && System.currentTimeMillis() + 1500L < deadline) {
-                    Thread.sleep(1500L * (attempt + 1))
-                    return@repeat
-                }
-                return TextFetchResult.Error("Error de Gemini con $model ($code): $bodyString")
-            } catch (e: java.net.UnknownHostException) {
-                if (attempt == maxAttempts - 1) {
-                    // Se llega aquí incluso después de intentar resolver por DNS-over-HTTPS como
-                    // respaldo (FallbackDns), así que ya no es un simple corte de red: apunta a
-                    // que algo en la red específicamente bloquea este dominio.
-                    return TextFetchResult.Error(
-                        "No se pudo conectar con el servidor de Gemini (generativelanguage.googleapis.com) " +
-                            "tras $maxAttempts intentos, incluso probando una resolución DNS alternativa. " +
-                            "Es probable que tu red (operador, DNS privado o VPN) esté bloqueando ese dominio " +
-                            "específico, no un problema general de tu internet. Prueba cambiar de WiFi a datos " +
-                            "móviles (o viceversa), desactivar un DNS privado/VPN si tienes uno activo, y reintenta."
-                    )
-                }
-                Thread.sleep(800L * (attempt + 1))
-            } catch (e: java.io.IOException) {
-                if (attempt == maxAttempts - 1) return TextFetchResult.Error("Fallo de conexión con $model tras reintentar: ${e.message}")
-                Thread.sleep(500L * (attempt + 1))
-            } catch (e: Exception) {
-                return TextFetchResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
             }
+        } catch (e: TimeoutCancellationException) {
+            TextFetchResult.Error("Se agotó el tiempo de espera con $model sin respuesta")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: UnknownHostException) {
+            // Se llega aquí incluso después de intentar resolver por DNS-over-HTTPS como
+            // respaldo (FallbackDns), así que no es un simple corte de red puntual: apunta a
+            // que algo en la red específicamente bloquea este dominio.
+            TextFetchResult.Error(
+                "No se pudo conectar con el servidor de Gemini (generativelanguage.googleapis.com) con $model. " +
+                    "Es probable que tu red (operador, DNS privado o VPN) esté bloqueando ese dominio específico, " +
+                    "no un problema general de tu internet. Prueba cambiar de WiFi a datos móviles (o viceversa), " +
+                    "desactivar un DNS privado/VPN si tienes uno activo, y reintenta."
+            )
+        } catch (e: IOException) {
+            TextFetchResult.Error("Fallo de conexión con $model: ${e.message}")
+        } catch (e: Exception) {
+            TextFetchResult.Error("No se pudo interpretar la respuesta de $model: ${e.message}")
         }
-        return TextFetchResult.Error("Fallo de conexión con $model")
     }
 
     private fun extractText(body: String): TextFetchResult {
